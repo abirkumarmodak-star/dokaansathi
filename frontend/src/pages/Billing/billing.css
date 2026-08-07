@@ -1,0 +1,298 @@
+.billing-page{
+
+    padding:30px;
+
+    background:#f5f7fb;
+
+    min-height:100vh;
+
+}
+
+.billing-page h1{
+
+    margin-bottom:25px;
+
+}
+/* Billing Cards */
+
+.billing-cards{
+
+    display:grid;
+
+    grid-template-columns:repeat(4,1fr);
+
+    gap:20px;
+
+    margin-bottom:30px;
+
+}
+
+.billing-card{
+
+    background:white;
+
+    padding:22px;
+
+    border-radius:14px;
+
+    box-shadow:0 2px 10px rgba(0,0,0,.08);
+
+    text-align:center;
+
+}
+
+.billing-card h3{
+
+    margin-bottom:10px;
+
+    color:#555;
+
+    font-size:16px;
+
+}
+
+.billing-card h2{
+
+    font-size:32px;
+
+    font-weight:bold;
+
+}
+
+.billing-card.total{
+
+    border-top:5px solid #0d6efd;
+
+}
+
+.billing-card.revenue{
+
+    border-top:5px solid #198754;
+
+}
+
+.billing-card.paid{
+
+    border-top:5px solid #20c997;
+
+}
+
+.billing-card.pending{
+
+    border-top:5px solid #ffc107;
+
+}
+/* Billing Filter */
+
+.billing-filter{
+
+    display:flex;
+
+    justify-content:space-between;
+
+    gap:20px;
+
+    margin:25px 0;
+
+}
+
+.billing-filter input{
+
+    flex:1;
+
+    padding:12px;
+
+    border:1px solid #ddd;
+
+    border-radius:8px;
+
+    font-size:15px;
+
+}
+
+.billing-filter select{
+
+    width:180px;
+
+    padding:12px;
+
+    border:1px solid #ddd;
+
+    border-radius:8px;
+
+    font-size:15px;
+
+}
+/* Billing Table */
+
+.billing-table{
+
+    width:100%;
+
+    border-collapse:collapse;
+
+    background:white;
+
+}
+
+.billing-table th{
+
+    background:#ff6b35;
+
+    color:white;
+
+    padding:14px;
+
+    text-align:left;
+
+}
+
+.billing-table td{
+
+    padding:14px;
+
+    border-bottom:1px solid #ddd;
+
+}
+
+.billing-table tr:hover{
+
+    background:#f8f8f8;
+
+}
+
+.paid-status{
+
+    color:green;
+
+    font-weight:bold;
+
+}
+
+.pending-status{
+
+    color:#ff9800;
+
+    font-weight:bold;
+
+}
+/* Bill Details Modal */
+
+.bill-modal{
+
+    width:420px;
+
+    background:white;
+
+    border-radius:12px;
+
+    padding:25px;
+
+    box-shadow:0 5px 15px rgba(0,0,0,.2);
+
+}
+
+.bill-modal h2{
+
+    margin-bottom:15px;
+
+}
+
+.bill-modal p{
+
+    margin:12px 0;
+
+    font-size:16px;
+
+}
+
+.print-btn{
+
+    width:100%;
+
+    padding:12px;
+
+    background:#198754;
+
+    color:white;
+
+    border:none;
+
+    border-radius:8px;
+
+    cursor:pointer;
+
+    margin-top:20px;
+
+}
+
+.print-btn:hover{
+
+    background:#157347;
+
+}
+
+.close-btn{
+
+    width:100%;
+
+    padding:12px;
+
+    background:#dc3545;
+
+    color:white;
+
+    border:none;
+
+    border-radius:8px;
+
+    cursor:pointer;
+
+    margin-top:10px;
+
+}
+
+.close-btn:hover{
+
+    background:#bb2d3b;
+
+}
+.confirm-btn{
+
+    background:#198754;
+
+    color:white;
+
+    border:none;
+
+    padding:8px 14px;
+
+    border-radius:6px;
+
+    cursor:pointer;
+
+    margin-left:8px;
+
+}
+
+.confirm-btn:hover{
+
+    background:#157347;
+
+}
+
+.confirmed-status{
+
+    color:green;
+
+    font-weight:bold;
+
+}
+
+.not-confirmed-status{
+
+    color:#ff9800;
+
+    font-weight:bold;
+
+}

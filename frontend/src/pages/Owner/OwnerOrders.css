@@ -1,0 +1,126 @@
+.owner-orders {
+
+    padding: 30px;
+
+}
+
+
+
+.owner-orders h1 {
+
+    margin-bottom: 25px;
+
+}
+
+
+
+.order-card {
+
+    background: #ffffff;
+
+    padding: 20px;
+
+    margin-bottom: 20px;
+
+    border-radius: 12px;
+
+    box-shadow: 0px 4px 12px rgba(0,0,0,0.1);
+
+}
+
+
+
+.order-card p {
+
+    font-size: 16px;
+
+}
+
+
+
+.status {
+
+    font-weight: bold;
+
+}
+
+
+
+button {
+
+    padding: 10px 18px;
+
+    border: none;
+
+    border-radius: 8px;
+
+    cursor: pointer;
+
+    margin-top: 10px;
+
+}
+
+
+
+.accept-btn {
+
+    background: #4caf50;
+
+    color:white;
+
+}
+
+
+
+.prepare-btn {
+
+    background:#ff9800;
+
+    color:white;
+
+}
+
+
+
+.ready-btn {
+
+    background:#2196f3;
+
+    color:white;
+
+}
+
+
+
+.complete-btn {
+
+    background:#673ab7;
+
+    color:white;
+
+}
+.accept-all-btn{
+
+    background:#28a745;
+
+    color:white;
+
+    border:none;
+
+    padding:12px 20px;
+
+    border-radius:8px;
+
+    cursor:pointer;
+
+    font-size:16px;
+
+    margin-bottom:20px;
+
+}
+
+.accept-all-btn:hover{
+
+    background:#218838;
+
+}

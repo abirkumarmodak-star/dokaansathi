@@ -1,0 +1,103 @@
+.staff-container{
+
+    display:flex;
+
+}
+
+.staff-page{
+
+    flex:1;
+
+    padding:30px;
+
+}
+
+.staff-page h1{
+
+    margin-bottom:15px;
+
+}
+
+.staff-form{
+
+    display:flex;
+
+    gap:15px;
+
+    flex-wrap:wrap;
+
+    margin-bottom:25px;
+
+}
+
+.staff-form input{
+
+    padding:10px;
+
+    width:220px;
+
+}
+
+.staff-form select{
+
+    padding:10px;
+
+    width:180px;
+
+}
+
+.staff-form button{
+
+    padding:10px 18px;
+
+    background:#28a745;
+
+    color:white;
+
+    border:none;
+
+    border-radius:6px;
+
+    cursor:pointer;
+
+}
+
+.staff-form button:hover{
+
+    background:#218838;
+
+}
+
+table{
+
+    width:100%;
+
+    border-collapse:collapse;
+
+}
+
+table th{
+
+    background:#343a40;
+
+    color:white;
+
+    padding:12px;
+
+}
+
+table td{
+
+    border:1px solid #ddd;
+
+    padding:10px;
+
+    text-align:center;
+
+}
+
+table tr:nth-child(even){
+
+    background:#f8f8f8;
+
+}
