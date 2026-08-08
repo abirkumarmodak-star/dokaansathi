@@ -8,7 +8,7 @@ function QRManagement() {
 
     useEffect(() => {
 
-        fetch("http://localhost:5000/api/tables")
+        fetch("https://dokaansathi.onrender.com/api/tables")
 
             .then((res) => res.json())
 

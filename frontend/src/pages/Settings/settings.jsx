@@ -22,7 +22,7 @@ function Settings() {
 
     useEffect(() => {
 
-        fetch("http://localhost:5000/api/shop-settings")
+        fetch("https://dokaansathi.onrender.com/api/shop-settings")
 
             .then((res) => res.json())
 
@@ -56,7 +56,7 @@ function Settings() {
 
         const response = await fetch(
 
-            "http://localhost:5000/api/shop-settings",
+            "https://dokaansathi.onrender.com/api/shop-settings",
 
             {
 

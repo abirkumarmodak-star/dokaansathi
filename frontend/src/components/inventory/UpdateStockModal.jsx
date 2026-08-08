@@ -20,7 +20,7 @@ function UpdateStockModal({
 
             const response = await fetch(
 
-                "http://localhost:5000/api/inventory/update-stock",
+                "https://dokaansathi.onrender.com/api/inventory/update-stock",
 
                 {
 
@@ -148,3 +148,4 @@ function UpdateStockModal({
 }
 
 export default UpdateStockModal;
+

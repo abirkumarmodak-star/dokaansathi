@@ -34,7 +34,7 @@ function Menu() {
 
             const response = await fetch(
 
-                "http://localhost:5000/api/menu"
+                "https://dokaansathi.onrender.com/api/menu"
 
             );
 
@@ -162,13 +162,13 @@ alert(token);
 
             const token = localStorage.getItem("token");
 
-            let url = "http://localhost:5000/api/menu";
+            let url = "https://dokaansathi.onrender.com/api/menu";
 
             let method = "POST";
 
             if (selectedFood) {
 
-                url = `http://localhost:5000/api/menu/${selectedFood.id}`;
+                url = `https://dokaansathi.onrender.com/api/menu/${selectedFood.id}`;
 
                 method = "PUT";
 
@@ -266,7 +266,7 @@ alert(token);
 
             const response = await fetch(
 
-                `http://localhost:5000/api/menu/${id}`,
+                `https://dokaansathi.onrender.com/api/menu/${id}`,
 
                 {
 
@@ -320,7 +320,7 @@ alert(token);
 
             const response = await fetch(
 
-                `http://localhost:5000/api/menu/toggle/${id}`,
+                `https://dokaansathi.onrender.com/api/menu/toggle/${id}`,
 
                 {
 

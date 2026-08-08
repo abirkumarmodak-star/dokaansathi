@@ -31,7 +31,7 @@ function StaffDashboard() {
         try {
 
             const res = await axios.get(
-                "http://localhost:5000/api/orders"
+                "https://dokaansathi.onrender.com/api/orders"
             );
 
         console.log("Orders:", res.data.orders);
@@ -53,7 +53,7 @@ function StaffDashboard() {
         try {
 
             await axios.post(
-                "http://localhost:5000/api/orders/accept",
+                "https://dokaansathi.onrender.com/api/orders/accept",
                 {
                     order_id
                 }
@@ -81,7 +81,7 @@ function StaffDashboard() {
         try {
 
             await axios.post(
-                "http://localhost:5000/api/orders/preparing",
+                "https://dokaansathi.onrender.com/api/orders/preparing",
                 {
                     order_id
                 }
@@ -109,7 +109,7 @@ function StaffDashboard() {
         try {
 
             await axios.post(
-                "http://localhost:5000/api/orders/ready",
+                "https://dokaansathi.onrender.com/api/orders/ready",
                 {
                     order_id
                 }
@@ -137,7 +137,7 @@ function StaffDashboard() {
         try {
 
             await axios.post(
-                "http://localhost:5000/api/orders/complete",
+                "https://dokaansathi.onrender.com/api/orders/complete",
                 {
                     order_id
                 }
@@ -303,4 +303,5 @@ function StaffDashboard() {
 }
 
 export default StaffDashboard;
+
 

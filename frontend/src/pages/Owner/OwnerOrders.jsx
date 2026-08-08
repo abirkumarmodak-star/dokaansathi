@@ -41,7 +41,7 @@ function OwnerOrders() {
         try {
 
             const response = await axios.get(
-                "http://localhost:5000/api/orders"
+                "https://dokaansathi.onrender.com/api/orders"
             );
 
 
@@ -202,7 +202,7 @@ function OwnerOrders() {
 
             const response = await axios.post(
 
-                `http://localhost:5000/api/orders/${endpoint}`,
+                `https://dokaansathi.onrender.com/api/orders/${endpoint}`,
 
                 {
                     order_id: order_id
@@ -269,7 +269,7 @@ function OwnerOrders() {
         try {
 
             const response = await axios.put(
-                "http://localhost:5000/api/orders/accept-all"
+                "https://dokaansathi.onrender.com/api/orders/accept-all"
             );
 
 

@@ -12,7 +12,7 @@ const loadDashboard = async () => {
     try {
 
         const res = await axios.get(
-            "http://localhost:5000/api/dashboard"
+            "https://dokaansathi.onrender.com/api/dashboard"
         );
 
         console.log(res.data);
@@ -33,7 +33,7 @@ const loadInventory = async () => {
     try {
 
         const res = await axios.get(
-            "http://localhost:5000/api/inventory"
+            "https://dokaansathi.onrender.com/api/inventory"
         );
 
         setInventory(res.data);

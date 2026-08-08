@@ -10,7 +10,7 @@ function Dashboard() {
 
     useEffect(() => {
 
-        fetch("http://localhost:5000/api/dashboard")
+        fetch("https://dokaansathi.onrender.com/api/dashboard")
 
             .then((res) => res.json())
 
@@ -126,3 +126,4 @@ console.log("Dashboard State:", dashboard);
 }
 
 export default Dashboard;
+

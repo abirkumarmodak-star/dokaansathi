@@ -34,7 +34,7 @@ function Orders() {
         try {
 
             const response = await fetch(
-                "http://localhost:5000/api/orders"
+                "https://dokaansathi.onrender.com/api/orders"
             );
 
             if (!response.ok) {
@@ -126,7 +126,7 @@ function Orders() {
 
             const response = await fetch(
 
-                `http://localhost:5000/api/orders/${api}`,
+                `https://dokaansathi.onrender.com/api/orders/${api}`,
 
                 {
 

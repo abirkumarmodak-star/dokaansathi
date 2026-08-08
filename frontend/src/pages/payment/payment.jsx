@@ -15,7 +15,7 @@ function Payment() {
         try {
 
             const response = await fetch(
-                "http://localhost:5000/api/orders/pending-payment"
+                "https://dokaansathi.onrender.com/api/orders/pending-payment"
             );
 
             const data = await response.json();
@@ -60,7 +60,7 @@ function Payment() {
 
             const response = await fetch(
 
-                "http://localhost:5000/api/orders/payment",
+                "https://dokaansathi.onrender.com/api/orders/payment",
 
                 {
 

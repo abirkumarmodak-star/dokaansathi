@@ -14,7 +14,7 @@ function HealthCheck() {
             try {
 
                 await axios.get(
-                    "http://localhost:5000/api/health"
+                    "https://dokaansathi.onrender.com/api/health"
                 );
 
                 navigate("/customer-home");

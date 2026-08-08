@@ -20,7 +20,7 @@ function Staff() {
 
     const loadStaff = () => {
 
-        fetch("http://localhost:5000/api/staff")
+        fetch("https://dokaansathi.onrender.com/api/staff")
 
             .then((res) => res.json())
 
@@ -76,7 +76,7 @@ function Staff() {
 
         const response = await fetch(
 
-            "http://localhost:5000/api/staff",
+            "https://dokaansathi.onrender.com/api/staff",
 
             {
 
