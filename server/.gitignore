@@ -1,3 +1,4 @@
 node_modules/
 .env
 aiven-ca.pem
+dokaansathi_backup.sql
