@@ -1,7 +1,15 @@
 const express = require("express");
 const cors = require("cors");
-require("dotenv").config();
+const path = require("path");
 
+require("dotenv").config({
+    path: path.join(__dirname, ".env")
+});
+console.log("DB HOST:", process.env.DB_HOST);
+console.log("DB USER:", process.env.DB_USER);
+console.log("DB NAME:", process.env.DB_NAME);
+console.log("DB PORT:", process.env.DB_PORT);
+console.log("PASSWORD EXISTS:", !!process.env.DB_PASSWORD);
 const db = require("./config/db");
 
 // Routes
