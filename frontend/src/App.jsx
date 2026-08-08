@@ -2,51 +2,53 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 
 import MainLayout from "./layouts/MainLayout";
 
+// Owner / Admin
 import Login from "./pages/Login/Login";
-import QRMenu from "./pages/customer/QRMenu";
 import Dashboard from "./pages/Dashboard/Dashboard";
 import Customers from "./pages/Customers/Customers";
 import Menu from "./pages/Menu/Menu";
 import Orders from "./pages/Orders/Orders";
 import Billing from "./pages/Billing/Billing";
 import Inventory from "./pages/Inventory/Inventory";
-import Payment from "./pages/payment/Payment";
-import Settings from "./pages/Settings/Settings";
+import Payment from "./pages/payment/payment";
+import Settings from "./pages/Settings/settings";
 import Staff from "./pages/Staff/Staff";
-import StaffLogin from "./pages/StaffLogin/StaffLogin";
+import StaffLogin from "./pages/StaffLogin/staffLogin";
 import StaffDashboard from "./pages/StaffDashboard/StaffDashboard";
-import OwnerDashboard from "./pages/owner/OwnerDashboard";
-import QRManagement from "./pages/owner/QRManagement";
+
+// Owner
+import OwnerDashboard from "./pages/Owner/OwnerDashboard";
+import OwnerOrders from "./pages/Owner/OwnerOrders";
+import QRManagement from "./pages/Owner/QRManagement";
+
 // Customer
 import LanguageSelection from "./pages/Customer/LanguageSelection";
 import CustomerHome from "./pages/Customer/CustomerHome";
 import HealthCheck from "./pages/Customer/HealthCheck";
 import CustomerMenu from "./pages/Customer/CustomerMenu";
+import QRMenu from "./pages/Customer/QRMenu";
 import Cart from "./pages/Customer/Cart";
 import Checkout from "./pages/Customer/Checkout";
 import OrderSuccess from "./pages/Customer/OrderSuccess";
-import OwnerOrders from "./pages/owner/OwnerOrders";
-import OrderTracking from "./pages/customer/OrderTracking";
+import OrderTracking from "./pages/Customer/OrderTracking";
 import CustomerOrderEntry from "./pages/Customer/CustomerOrderEntry";
 
-
 function App() {
-
     return (
-
         <BrowserRouter>
-
             <Routes>
 
-                {/* Login */}
-
+                {/* =========================
+                    LOGIN
+                ========================= */}
                 <Route
                     path="/"
                     element={<Login />}
                 />
 
-                {/* Owner Layout */}
-
+                {/* =========================
+                    OWNER / ADMIN LAYOUT
+                ========================= */}
                 <Route element={<MainLayout />}>
 
                     <Route
@@ -86,11 +88,17 @@ function App() {
 
                 </Route>
 
+                {/* =========================
+                    SETTINGS
+                ========================= */}
                 <Route
                     path="/settings"
                     element={<Settings />}
                 />
 
+                {/* =========================
+                    STAFF
+                ========================= */}
                 <Route
                     path="/staff"
                     element={<Staff />}
@@ -106,7 +114,9 @@ function App() {
                     element={<StaffDashboard />}
                 />
 
-                {/* Customer */}
+                {/* =========================
+                    CUSTOMER
+                ========================= */}
 
                 <Route
                     path="/customer"
@@ -117,61 +127,76 @@ function App() {
                     path="/customer-home"
                     element={<CustomerHome />}
                 />
-<Route
-    path="/health"
-    element={<HealthCheck />}
-/>
-<Route
-path="/menu/:qrCode"
-element={<CustomerMenu />}
-/>
 
-<Route
-    path="/checkout"
-    element={<Checkout />}
-/>
-<Route
+                <Route
+                    path="/health"
+                    element={<HealthCheck />}
+                />
 
-    path="/order-tracking"
+                {/* QR Menu */}
+                <Route
+                    path="/menu/:qrCode"
+                    element={<QRMenu />}
+                />
 
-    element={<OrderTracking />}
+                {/* Customer Menu */}
+                <Route
+                    path="/customer-menu"
+                    element={<CustomerMenu />}
+                />
 
-/>
-<Route
-    path="/order-success"
-    element={<OrderSuccess />}
-/>
+                {/* Cart */}
+                <Route
+                    path="/customer/cart/:qrCode"
+                    element={<Cart />}
+                />
 
+                {/* Checkout */}
+                <Route
+                    path="/checkout"
+                    element={<Checkout />}
+                />
 
+                {/* Order Success */}
+                <Route
+                    path="/order-success"
+                    element={<OrderSuccess />}
+                />
 
-<Route
-    path="/owner/orders"
-    element={<OwnerOrders />}
-/>
+                {/* Order Tracking */}
+                <Route
+                    path="/order-tracking"
+                    element={<OrderTracking />}
+                />
 
-<Route
-    path="/order/:qrCode"
-    element={<CustomerOrderEntry />}
-/>
-<Route
-    path="/owner/dashboard"
-    element={<OwnerDashboard />}
-/>
+                {/* QR Order Entry */}
+                <Route
+                    path="/order/:qrCode"
+                    element={<CustomerOrderEntry />}
+                />
 
-<Route
-    path="/owner/qr"
-    element={<QRManagement />}
- />
- <Route
-    path="/customer/cart/:qrCode"
-    element={<Cart />}
-/>
+                {/* =========================
+                    OWNER DASHBOARD
+                ========================= */}
+
+                <Route
+                    path="/owner/dashboard"
+                    element={<OwnerDashboard />}
+                />
+
+                <Route
+                    path="/owner/orders"
+                    element={<OwnerOrders />}
+                />
+
+                <Route
+                    path="/owner/qr"
+                    element={<QRManagement />}
+                />
+
             </Routes>
-
         </BrowserRouter>
-
     );
-
 }
 
 export default App;
