@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 
 import Sidebar from "../../components/layout/Sidebar";
 
-import "./Settings.css";
+import "./settings.css";
 
 function Settings() {
 
@@ -186,3 +186,4 @@ function Settings() {
 }
 
 export default Settings;
+

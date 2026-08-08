@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import Sidebar from "../../components/layout/Sidebar";
-import "./Staff.css";
+import "./staff.css";
 
 function Staff() {
 
@@ -273,3 +273,4 @@ function Staff() {
 }
 
 export default Staff;
+

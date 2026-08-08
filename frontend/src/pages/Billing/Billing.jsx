@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-import "./Billing.css";
+import "./billing.css";
 
 import billingData from "../../data/billingData";
 

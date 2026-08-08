@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import "./Payment.css";
+import "./payment.css";
 
 function Payment() {
 
@@ -248,3 +248,4 @@ function Payment() {
 }
 
 export default Payment;
+

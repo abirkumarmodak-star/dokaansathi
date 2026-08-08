@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import "./StaffLogin.css";
+import "./staffLogin.css";
 
 function StaffLogin() {
 
@@ -125,3 +125,4 @@ function StaffLogin() {
 }
 
 export default StaffLogin;
+
