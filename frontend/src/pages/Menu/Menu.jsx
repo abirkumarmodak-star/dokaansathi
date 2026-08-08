@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 
 import SearchBar from "../../components/menu/Searchbar";
-import MenuTable from "../../components/menu/MenuTable";
+import MenuTable from "../../components/menu/Menutable";
 import AddFoodModal from "../../components/menu/AddFoodModal";
 
 import "./Menu.css";
@@ -458,4 +458,5 @@ alert(token);
 }
 
 export default Menu;
+
 
