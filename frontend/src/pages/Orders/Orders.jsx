@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import "./Orders.css";
 
 import OrderCard from "../../components/Orders/OrderCard";
-import OrderFilter from "../../components/Orders/OrderFilter";
+import OrderFilter from "../../components/Orders/Orderfilter";
 import OrderTable from "../../components/Orders/OrderTable";
 import OrderDetailsModal from "../../components/Orders/OrderDetailsModal";
 
@@ -289,3 +289,4 @@ function Orders() {
 }
 
 export default Orders;
+

@@ -4,9 +4,9 @@ import "./billing.css";
 
 import billingData from "../../data/billingData";
 
-import BillingCard from "../../components/billing/BillingCard";
-import BillingFilter from "../../components/billing/BillingFilter";
-import BillingTable from "../../components/billing/BillingTable";
+import BillingCard from "../../components/billing/billingcard";
+import BillingFilter from "../../components/billing/billingfilter";
+import BillingTable from "../../components/billing/billingTable";
 import BillDetailsModal from "../../components/billing/BillDetailsModal";
 
 function Billing() {
@@ -126,3 +126,4 @@ function Billing() {
 }
 
 export default Billing;
+
