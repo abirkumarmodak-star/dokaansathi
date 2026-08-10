@@ -43,9 +43,17 @@ function Orders() {
 
             }
 
-            const data = await response.json();
+         const data = await response.json();
 
-            const formattedOrders = data.map((order) => ({
+console.log("ORDERS API RESPONSE:", data);
+
+const orderList = Array.isArray(data)
+    ? data
+    : Array.isArray(data.orders)
+        ? data.orders
+        : [];
+
+const formattedOrders = orderList.map((order) => ({
 
                 id: order.id,
 
@@ -112,13 +120,13 @@ function Orders() {
 
             else if (currentStatus === "Ready") {
 
-                api = "serve";
+                api = "complete";
 
             }
 
             else {
 
-                alert("Order Already Served");
+                alert("Order Already completed");
 
                 return;
 
