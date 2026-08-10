@@ -7,22 +7,12 @@ function Login() {
 
     const navigate = useNavigate();
 
-    // ===========================
-    // STATES
-    // ===========================
-
     const [phone, setPhone] = useState("");
     const [password, setPassword] = useState("");
 
     const [showPassword, setShowPassword] = useState(false);
-
     const [loading, setLoading] = useState(false);
-
     const [error, setError] = useState("");
-
-    // ===========================
-    // LOGIN
-    // ===========================
 
     const handleLogin = async () => {
 
@@ -31,70 +21,84 @@ function Login() {
             setError("Please enter phone and password");
 
             return;
-
         }
 
         try {
 
             setLoading(true);
-
             setError("");
 
-           
-   const response = await fetch(
-    "https://dokaansathi.onrender.com/api/users/login",
-    {
-        method: "POST",
+            const response = await fetch(
+                "https://dokaansathi.onrender.com/api/users/login",
+                {
+                    method: "POST",
 
-        headers: {
-            "Content-Type": "application/json"
-        },
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
 
-        body: JSON.stringify({
-            phone,
-            password
-        })
-    }
-);
+                    body: JSON.stringify({
+                        phone: phone.trim(),
+                        password
+                    })
+                }
+            );
 
-const data = await response.json();
+            const data = await response.json();
 
-console.log("LOGIN RESPONSE:", data);
+            console.log("LOGIN STATUS:", response.status);
+            console.log("LOGIN RESPONSE:", data);
 
-if (!response.ok) {
+            if (!response.ok) {
 
-    setError(data.message || "Login failed");
+                setError(
+                    data.message || "Login failed"
+                );
 
-    setLoading(false);
+                return;
+            }
 
-    return;
-}
+            if (!data.token) {
 
-localStorage.setItem(
-    "token",
-    data.token
-);
+                setError(
+                    "Login successful but token was not received"
+                );
 
-localStorage.setItem(
-    "user",
-    JSON.stringify(data.user)
-);
+                return;
+            }
 
-alert("Login Successful");
+            localStorage.setItem(
+                "token",
+                data.token
+            );
 
-navigate("/dashboard");
+            localStorage.setItem(
+                "user",
+                JSON.stringify(data.user)
+            );
 
-          
-            // Save User
+            console.log(
+                "User:",
+                data.user
+            );
+
+            alert("Login Successful");
+
+            navigate("/dashboard");
 
         }
-catch (err) {
+        catch (err) {
 
-    console.error("LOGIN ERROR :", err);
+            console.error(
+                "LOGIN ERROR:",
+                err
+            );
 
-    setError(err.message);
+            setError(
+                "Unable to connect to server"
+            );
 
-}
+        }
         finally {
 
             setLoading(false);
@@ -103,10 +107,6 @@ catch (err) {
 
     };
 
-    // ===========================
-    // UI
-    // ===========================
-
     return (
 
         <div className="login-container">
@@ -114,227 +114,171 @@ catch (err) {
             <div className="login-card">
 
                 <div className="logo-box">
-
                     🍽
-
                 </div>
 
                 <h1>JANA FOOD HUB</h1>
 
                 <p className="address">
-
                     Manguria Ranchi Road, Purulia
-
                 </p>
 
                 <h2>DOKAAN SATHI</h2>
 
                 <p className="welcome">
-
                     Welcome Back
-
                 </p>
+
+
+                {/* PHONE */}
 
                 <div className="input-group">
 
                     <label>
-
                         📱 Mobile Number
-
                     </label>
 
                     <input
-
                         type="text"
-
                         placeholder="Enter Mobile Number"
-
                         value={phone}
-
                         onChange={(e) =>
-
                             setPhone(e.target.value)
-
                         }
-
                     />
 
                 </div>
 
+
+                {/* PASSWORD */}
+
                 <div className="input-group">
 
                     <label>
-
                         🔒 Password
-
                     </label>
 
                     <div className="password-box">
 
                         <input
-
                             type={
-
                                 showPassword
-
                                     ? "text"
-
                                     : "password"
-
                             }
-
                             placeholder="Enter Password"
-
                             value={password}
-
                             onChange={(e) =>
-
                                 setPassword(e.target.value)
-
                             }
-
                         />
 
                         <button
-
                             type="button"
-
                             className="eye-btn"
-
                             onClick={() =>
-
                                 setShowPassword(
-
                                     !showPassword
-
                                 )
-
                             }
-
                         >
-
                             {
-
                                 showPassword
-
                                     ? "🙈"
-
                                     : "👁"
-
                             }
-
                         </button>
 
                     </div>
 
                 </div>
 
-                {
 
-                    error &&
+                {/* ERROR */}
+
+                {error && (
 
                     <p
-
                         style={{
-
                             color: "red",
-
                             textAlign: "center",
-
                             marginBottom: "15px"
-
                         }}
-
                     >
-
                         {error}
-
                     </p>
 
-                }
+                )}
+
+
+                {/* LOGIN */}
 
                 <button
-
                     className="login-btn"
-
                     onClick={handleLogin}
-
                     disabled={loading}
-
                 >
-
                     {
-
                         loading
-
                             ? "Logging..."
-
                             : "Login"
-
                     }
-
                 </button>
-<button
-    type="button"
-    onClick={() => navigate("/owner-register")}
->
-    Create Owner Account
-</button>
+
+
+                {/* OWNER REGISTER */}
+
+                <button
+                    type="button"
+                    className="register-btn"
+                    onClick={() =>
+                        navigate("/owner-register")
+                    }
+                >
+                    Create Owner Account
+                </button>
+
+
+                {/* LANGUAGE */}
+
                 <div className="language-box">
 
                     <button>
-
                         বাংলা
-
                     </button>
 
                     <button>
-
                         English
-
                     </button>
 
                     <button>
-
                         हिन्दी
-
                     </button>
 
                 </div>
 
+
                 <hr />
 
+
+                {/* CUSTOMER */}
+
                 <button
-
                     className="customer-btn"
-
                     onClick={() =>
-
                         alert(
-
                             "Customer QR Ordering Module will be added during Customer Phase."
-
                         )
-
                     }
-
                 >
-
                     🍽 Customer Order
-
                 </button>
-<button
-    className="register-btn"
-    onClick={() => navigate("/owner-register")}
->
-    Create Owner Account
-</button>
+
             </div>
 
         </div>
 
     );
-
 }
 
 export default Login;
