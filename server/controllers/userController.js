@@ -1,6 +1,6 @@
 const db = require("../config/db");
 const jwt = require("jsonwebtoken");
-
+const bcrypt = require("bcryptjs");
 console.log("✅ USER CONTROLLER LOADED");
 
 // ==============================
@@ -19,7 +19,7 @@ exports.getUsers = (req, res) => {
         FROM users
     `;
 
-    db.query(sql, (err, result) => {
+    db.query(sql, [phone], async (err, result) => {
 
         if (err) {
             return res.status(500).json({
@@ -37,56 +37,170 @@ exports.getUsers = (req, res) => {
 // ==============================
 // CREATE USER
 // ==============================
-exports.createUser = (req, res) => {
+// ==============================
+// CREATE OWNER USER
+// ==============================
+exports.createUser = async (req, res) => {
 
-    const {
-        name,
-        phone,
-        password,
-        role,
-        language
-    } = req.body;
+    try {
 
-    const sql = `
-        INSERT INTO users
-        (
+        const {
             name,
             phone,
             password,
-            role,
             language
-        )
-        VALUES (?, ?, ?, ?, ?)
-    `;
+        } = req.body;
 
-    db.query(
-        sql,
-        [
-            name,
-            phone,
-            password,
-            role,
-            language
-        ],
-        (err, result) => {
+        // ==============================
+        // VALIDATION
+        // ==============================
 
-            if (err) {
-                return res.status(500).json({
-                    error: err
-                });
-            }
+        if (!name || !phone || !password) {
 
-            res.status(201).json({
-                message: "User Created Successfully",
-                userId: result.insertId
+            return res.status(400).json({
+
+                success: false,
+                message: "Name, Phone and Password are required"
+
             });
 
         }
-    );
+
+        // ==============================
+        // CHECK PHONE
+        // ==============================
+
+        const checkSQL = `
+            SELECT id
+            FROM users
+            WHERE phone = ?
+        `;
+
+        db.query(
+            checkSQL,
+            [phone],
+            async (checkErr, existingUsers) => {
+
+                if (checkErr) {
+
+                    console.log(checkErr);
+
+                    return res.status(500).json({
+
+                        success: false,
+                        message: "Database Error"
+
+                    });
+
+                }
+
+                if (existingUsers.length > 0) {
+
+                    return res.status(409).json({
+
+                        success: false,
+                        message: "This phone number is already registered"
+
+                    });
+
+                }
+
+                // ==============================
+                // HASH PASSWORD
+                // ==============================
+
+                const hashedPassword =
+                    await bcrypt.hash(password, 12);
+
+                // ==============================
+                // CREATE OWNER
+                // ==============================
+
+                const sql = `
+                    INSERT INTO users
+                    (
+                        name,
+                        phone,
+                        password,
+                        role,
+                        language
+                    )
+                    VALUES (?, ?, ?, 'owner', ?)
+                `;
+
+                db.query(
+                    sql,
+                    [
+                        name,
+                        phone,
+                        hashedPassword,
+                        language || "English"
+                    ],
+                    (err, result) => {
+
+                        if (err) {
+
+                            console.log(err);
+
+                            return res.status(500).json({
+
+                                success: false,
+                                message: "Account Creation Failed"
+
+                            });
+
+                        }
+
+                        return res.status(201).json({
+
+                            success: true,
+
+                            message:
+                                "Owner Account Created Successfully",
+
+                            user: {
+
+                                id: result.insertId,
+
+                                name,
+
+                                phone,
+
+                                role: "owner",
+
+                                language:
+                                    language || "English"
+
+                            }
+
+                        });
+
+                    }
+                );
+
+            }
+        );
+
+    }
+    catch (error) {
+
+        console.log(error);
+
+        return res.status(500).json({
+
+            success: false,
+            message: "Server Error"
+
+        });
+
+    }
 
 };
 
 
+// ==============================
+// LOGIN USER
+// ==============================
 // ==============================
 // LOGIN USER
 // ==============================
@@ -95,27 +209,41 @@ exports.loginUser = (req, res) => {
     console.log("🔥 LOGIN API CALLED");
 
     const { phone, password } = req.body;
+
     console.log("PHONE RECEIVED:", phone);
-    console.log("PASSWORD RECEIVED:", password);
+
+    if (!phone || !password) {
+
+        return res.status(400).json({
+            success: false,
+            message: "Phone and Password are required"
+        });
+
+    }
+
     const sql = `
         SELECT *
         FROM users
         WHERE phone = ?
     `;
 
-    db.query(sql, [phone], (err, result) => {
-     console.log(result);
+    db.query(sql, [phone], async (err, result) => {
+
         if (err) {
+
             console.log(err);
 
             return res.status(500).json({
-                error: err
+                success: false,
+                message: "Database Error"
             });
+
         }
 
         if (result.length === 0) {
 
             return res.status(401).json({
+                success: false,
                 message: "Phone not found"
             });
 
@@ -123,31 +251,50 @@ exports.loginUser = (req, res) => {
 
         const user = result[0];
 
-        if (user.password !== password) {
+        // ==============================
+        // CHECK PASSWORD
+        // ==============================
+
+        const passwordMatch = await bcrypt.compare(
+            password,
+            user.password
+        );
+
+        if (!passwordMatch) {
 
             return res.status(401).json({
+
+                success: false,
                 message: "Wrong Password"
+
             });
 
         }
 
-        console.log("Before JWT");
+        // ==============================
+        // CREATE JWT
+        // ==============================
 
         const token = jwt.sign(
+
             {
                 id: user.id,
                 role: user.role
             },
+
             process.env.JWT_SECRET,
+
             {
                 expiresIn: "8h"
             }
+
         );
 
-        console.log("Generated Token:");
-        console.log(token);
+        // ==============================
+        // LOGIN SUCCESS
+        // ==============================
 
-        res.status(200).json({
+        return res.status(200).json({
 
             success: true,
 

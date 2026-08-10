@@ -20,7 +20,7 @@ import StaffDashboard from "./pages/StaffDashboard/StaffDashboard";
 import OwnerDashboard from "./pages/Owner/OwnerDashboard";
 import OwnerOrders from "./pages/Owner/OwnerOrders";
 import QRManagement from "./pages/Owner/QRManagement";
-
+import OwnerRegister from "./pages/OwnerRegister/OwnerRegister";
 // Customer
 import LanguageSelection from "./pages/Customer/LanguageSelection";
 import CustomerHome from "./pages/Customer/CustomerHome";
@@ -193,7 +193,10 @@ function App() {
                     path="/owner/qr"
                     element={<QRManagement />}
                 />
-
+<Route
+    path="/owner-register"
+    element={<OwnerRegister />}
+/>
             </Routes>
         </BrowserRouter>
     );

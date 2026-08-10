@@ -289,7 +289,12 @@ catch (err) {
                     }
 
                 </button>
-
+<button
+    type="button"
+    onClick={() => navigate("/owner-register")}
+>
+    Create Owner Account
+</button>
                 <div className="language-box">
 
                     <button>
@@ -333,7 +338,12 @@ catch (err) {
                     🍽 Customer Order
 
                 </button>
-
+<button
+    className="register-btn"
+    onClick={() => navigate("/owner-register")}
+>
+    Create Owner Account
+</button>
             </div>
 
         </div>

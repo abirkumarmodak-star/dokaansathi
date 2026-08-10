@@ -1,33 +1,52 @@
 const express = require("express");
 
 const router = express.Router();
-console.log("✅ staffRoutes.js loaded");
+
 const {
-
     getStaff,
-
     createStaff,
     staffLogin
-
 } = require("../controllers/staffController");
 
-// ===============================
-// GET ALL STAFF
-// ===============================
+const authMiddleware = require("../middleware/authMiddleware");
+const requireRole = require("../middleware/roleMiddleware");
 
-router.get("/", getStaff);
 
-// ===============================
-// ADD NEW STAFF
-// ===============================
-
-router.post("/", createStaff);
-// ===============================
+// ======================================================
 // STAFF LOGIN
-// ===============================
-router.post("/login", (req, res, next) => {
-    console.log("🔥 STAFF LOGIN ROUTE HIT");
-    next();
-}, staffLogin);
-router.post("/login", staffLogin);
+// Public route
+// ======================================================
+
+router.post(
+    "/login",
+    staffLogin
+);
+
+
+// ======================================================
+// GET ALL STAFF
+// Owner only
+// ======================================================
+
+router.get(
+    "/",
+    authMiddleware,
+    requireRole("owner"),
+    getStaff
+);
+
+
+// ======================================================
+// CREATE STAFF
+// Owner only
+// ======================================================
+
+router.post(
+    "/",
+    authMiddleware,
+    requireRole("owner"),
+    createStaff
+);
+
+
 module.exports = router;

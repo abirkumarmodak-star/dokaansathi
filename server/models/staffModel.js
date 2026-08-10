@@ -1,5 +1,9 @@
 const db = require("../config/db");
 
+// ===============================
+// GET ALL STAFF
+// ===============================
+
 exports.getAllStaff = (callback) => {
 
     const sql = `
@@ -14,8 +18,36 @@ exports.getAllStaff = (callback) => {
     `;
 
     db.query(sql, callback);
-
 };
+
+
+// ===============================
+// FIND STAFF BY PHONE
+// Used while creating staff
+// ===============================
+
+exports.findByPhone = (phone, callback) => {
+
+    const sql = `
+        SELECT
+            id,
+            name,
+            phone,
+            role,
+            status
+        FROM staff
+        WHERE phone = ?
+    `;
+
+    db.query(sql, [phone], callback);
+};
+
+
+// ===============================
+// ADD NEW STAFF
+// Password is already hashed
+// in staffController.js
+// ===============================
 
 exports.addStaff = (staff, callback) => {
 
@@ -37,41 +69,37 @@ exports.addStaff = (staff, callback) => {
     `;
 
     db.query(
-
         sql,
-
         [
-
             staff.name,
-
             staff.phone,
-
             staff.password,
-
             staff.role
-
         ],
-
         callback
-
     );
-
 };
-exports.loginStaff = (phone, password, callback) => {
+
+
+// ===============================
+// GET STAFF BY PHONE
+// Used during login
+// ===============================
+
+exports.getStaffByPhone = (phone, callback) => {
 
     const sql = `
         SELECT
             id,
             name,
             phone,
+            password,
             role,
             status
         FROM staff
         WHERE phone = ?
-        AND password = ?
         AND status = 'Active'
     `;
 
-    db.query(sql, [phone, password], callback);
-
+    db.query(sql, [phone], callback);
 };
