@@ -40,67 +40,52 @@ function Login() {
 
             setError("");
 
-            const response = await fetch(
-                "https://dokaansathi.onrender.com/api/users/login",
-                {
+           
+   const response = await fetch(
+    "https://dokaansathi.onrender.com/api/users/login",
+    {
+        method: "POST",
 
-                    method: "POST",
+        headers: {
+            "Content-Type": "application/json"
+        },
 
-                    headers: {
+        body: JSON.stringify({
+            phone,
+            password
+        })
+    }
+);
 
-                        "Content-Type": "application/json"
+const data = await response.json();
 
-                    },
-
-                    body: JSON.stringify({
-
-                        phone,
-
-                        password
-
-                    })
-
-                }
-            );
-
-            const data = await response.json();
 console.log("LOGIN RESPONSE:", data);
-console.log("TOKEN =", data.token);
 
-alert(data.token);
-            if (!response.ok) {
+if (!response.ok) {
 
-                setError(data.message);
+    setError(data.message || "Login failed");
 
-                setLoading(false);
+    setLoading(false);
 
-                return;
+    return;
+}
 
-            }
+localStorage.setItem(
+    "token",
+    data.token
+);
 
-            // Save JWT
+localStorage.setItem(
+    "user",
+    JSON.stringify(data.user)
+);
 
-            localStorage.setItem(
+alert("Login Successful");
 
-                "token",
+navigate("/dashboard");
 
-                data.token
-
-            );
-alert(localStorage.getItem("token"));
+          
             // Save User
-
-            localStorage.setItem(
-
-                "user",
-
-                JSON.stringify(data.user)
-
-            );
-
-            alert("Login Successful");
-
-            navigate("/dashboard");
 
         }
 catch (err) {
