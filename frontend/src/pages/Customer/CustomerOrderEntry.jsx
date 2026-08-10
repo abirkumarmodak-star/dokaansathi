@@ -45,7 +45,7 @@ const CustomerOrderEntry = () => {
 
 
                 const response = await fetch(
-    `http://10.109.215.8:5000/api/tables/qr/${qrCode}`
+    `https://dokaansathi.onrender.com/api/tables/qr/${qrCode}`
 );
 
 

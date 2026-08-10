@@ -81,7 +81,7 @@ function OrderTracking() {
 
             const response = await fetch(
 
-                `http://10.109.215.8:5000/api/orders/token/${token}`
+                `https://dokaansathi.onrender.com/api/orders/token/${token}`
 
             );
 
@@ -198,7 +198,7 @@ const addMoreItems = () => {
 
             const response = await fetch(
 
-                "http://10.109.215.8:5000/api/orders/cancel",
+                "https://dokaansathi.onrender.com/api/orders/cancel",
 
                 {
 

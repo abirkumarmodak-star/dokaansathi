@@ -79,7 +79,7 @@ console.log("Existing Order ID:", existingOrderId);
 
                     const response = await fetch(
 
-                        "http://10.109.215.8:5000/api/order-items/add",
+                        "https://dokaansathi.onrender.com/api/order-items/add",
 
                         {
 
@@ -149,7 +149,7 @@ console.log("Existing Order ID:", existingOrderId);
 
             const customerResponse = await fetch(
 
-                "http://10.109.215.8:5000/api/customers",
+                "https://dokaansathi.onrender.com/api/customers",
 
                 {
 
@@ -212,7 +212,7 @@ console.log({
 });
             const orderResponse = await fetch(
 
-                "http://10.109.215.8:5000/api/orders",
+                "https://dokaansathi.onrender.com/api/orders",
 
                 {
 
@@ -288,7 +288,7 @@ console.log({
 });
 
 const tableResponse = await fetch(
-    "http://10.109.215.8:5000/api/restaurant-tables/status",
+    "https://dokaansathi.onrender.com/api/restaurant-tables/status",
     {
         method: "PATCH",
         headers: {

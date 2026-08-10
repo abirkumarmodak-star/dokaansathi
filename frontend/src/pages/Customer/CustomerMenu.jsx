@@ -37,7 +37,7 @@ const CustomerMenu = () => {
         try {
 
             const response = await fetch(
-                "http://10.109.215.8:5000/api/menu"
+                "https://dokaansathi.onrender.com/api/menu"
             );
 
             const data = await response.json();
