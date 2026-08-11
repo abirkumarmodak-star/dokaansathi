@@ -307,19 +307,26 @@ total_amount,
 
             (err, orderResult) => {
 
-                if (err) {
+             if (err) {
 
-                    console.log(err);
+    console.log("========== ORDER INSERT ERROR ==========");
+    console.log("MYSQL ERROR:", err);
+    console.log("SQL MESSAGE:", err.sqlMessage);
+    console.log("SQL CODE:", err.code);
 
-                    return res.status(500).json({
+    return res.status(500).json({
 
-                        success: false,
+        success: false,
 
-                        message: "Order Creation Failed"
+        message: "Order Creation Failed",
 
-                    });
+        error: err.sqlMessage,
 
-                }
+        code: err.code
+
+    });
+
+}
 
                 const order_id = orderResult.insertId;
 
