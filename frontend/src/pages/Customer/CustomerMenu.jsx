@@ -251,18 +251,11 @@ const CustomerMenu = () => {
     // OPEN CART
     // ===========================
 
-    const openCart = () => {
+   const openCart = () => {
 
-        localStorage.setItem(
-            "qrCode",
-            qrCode
-        );
+    navigate("/checkout");
 
-        navigate(
-            `/customer/cart/${qrCode}`
-        );
-
-    };
+};
 
 
     // ===========================

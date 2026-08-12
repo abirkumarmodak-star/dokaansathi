@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
 import "./StaffDashboard.css";
-
+import { useNavigate } from "react-router-dom";
 const API_URL = "https://dokaansathi.onrender.com/api";
 
 function StaffDashboard() {
@@ -11,7 +11,7 @@ function StaffDashboard() {
     const [error, setError] = useState("");
 
     const [staff, setStaff] = useState(null);
-
+const navigate = useNavigate();
     // ==========================================
     // LOAD STAFF ACCOUNT
     // ==========================================
@@ -633,7 +633,11 @@ function StaffDashboard() {
                                     </button>
 
                                 )}
-
+<button
+    onClick={() => navigate("/staff/walk-in")}
+>
+    🧓 Walk-in Customer
+</button>
                                 {order.order_status ===
                                     "Completed" && (
 
@@ -653,7 +657,7 @@ function StaffDashboard() {
                                     >
                                         ❌ Cancelled
                                     </button>
-
+                                    
                                 )}
 
                             </div>

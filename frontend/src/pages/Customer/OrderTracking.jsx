@@ -146,39 +146,11 @@ function OrderTracking() {
 
 
     // ===============================
-    // ADD MORE ITEMS
-    // ===============================
-const addMoreItems = () => {
+    // ADD M
+    
+ // ===============================
+// ADD MORE ITEMS
 
-    console.log("ADD MORE ITEMS CLICKED");
-
-    localStorage.setItem(
-        "existingOrderId",
-        order.id
-    );
-
-    localStorage.setItem(
-        "existingToken",
-        order.token_number
-    );
-
-    const qrCode = localStorage.getItem("qrCode");
-
-    if (!qrCode) {
-
-        alert("QR Code Not Found");
-
-        return;
-
-    }
-
-    navigate(`/menu/${qrCode}`);
-
-};
-
-      
-
- 
 
 
 
@@ -497,16 +469,7 @@ const addMoreItems = () => {
                 <div>
 
 
-                    <button
-
-                        onClick={addMoreItems}
-
-                    >
-
-                        ➕ Add More Items
-
-                    </button>
-
+                    
 
 
 

@@ -532,7 +532,11 @@ console.log("========================================");
     </button>
 
 )}
-
+<button
+    onClick={() => navigate("/customer-menu")}
+>
+    ➕ Add More Foods
+</button>
         </div>
 
     );

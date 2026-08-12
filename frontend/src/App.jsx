@@ -15,7 +15,7 @@ import Settings from "./pages/Settings/settings";
 import Staff from "./pages/Staff/Staff";
 import StaffLogin from "./pages/StaffLogin/staffLogin";
 import StaffDashboard from "./pages/StaffDashboard/StaffDashboard";
-
+import WalkInOrder from "./pages/Staff/WalkInOrder";
 // Owner
 import OwnerDashboard from "./pages/Owner/OwnerDashboard";
 import OwnerOrders from "./pages/Owner/OwnerOrders";
@@ -144,7 +144,10 @@ function App() {
                     path="/customer-menu"
                     element={<CustomerMenu />}
                 />
-
+<Route
+    path="/customer-menu/:qrCode"
+    element={<CustomerMenu />}
+/>
                 {/* Cart */}
                 <Route
                     path="/customer/cart/:qrCode"
@@ -196,6 +199,10 @@ function App() {
 <Route
     path="/owner-register"
     element={<OwnerRegister />}
+/>
+<Route
+    path="/staff/walk-in"
+    element={<WalkInOrder />}
 />
             </Routes>
         </BrowserRouter>

@@ -10,17 +10,9 @@ function OrderSuccess() {
 
     const orderAgain = () => {
 
-        if (!qrCode) {
+    navigate("/customer-menu");
 
-            alert("QR Code Not Found");
-
-            return;
-
-        }
-
-        navigate(`/menu/${qrCode}`);
-
-    };
+};
 
     return (
 
