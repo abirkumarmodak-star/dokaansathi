@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "./Checkout.css";
-
+const API_BASE_URL = "http://localhost:5000/api";
 function Checkout() {
 
     const navigate = useNavigate();
@@ -32,7 +32,30 @@ console.log("TABLE NUMBER =", tableNumber);
         setCartItems(cart);
 
     }, []);
+// ==========================================
+// REMOVE ITEM FROM CART
+// ==========================================
 
+const removeItem = (id, plateType) => {
+
+    const updatedCart = cartItems.filter(
+
+        item =>
+            !(
+                Number(item.id) === Number(id) &&
+                item.plateType === plateType
+            )
+
+    );
+
+    localStorage.setItem(
+        "cart",
+        JSON.stringify(updatedCart)
+    );
+
+    setCartItems(updatedCart);
+
+};
     const total = cartItems.reduce(
 
         (sum, item) =>
@@ -79,7 +102,7 @@ console.log("Existing Order ID:", existingOrderId);
 
                     const response = await fetch(
 
-                        "https://dokaansathi.onrender.com/api/order-items/add",
+                       `${API_BASE_URL}/order-items/add`,
 
                         {
 
@@ -149,7 +172,7 @@ console.log("Existing Order ID:", existingOrderId);
 
             const customerResponse = await fetch(
 
-                "https://dokaansathi.onrender.com/api/customers",
+                `${API_BASE_URL}/customers`,
 
                 {
 
@@ -212,7 +235,7 @@ console.log({
 });
             const orderResponse = await fetch(
 
-                "https://dokaansathi.onrender.com/api/orders",
+                `${API_BASE_URL}/orders`,
 
                 {
 
@@ -288,7 +311,7 @@ console.log({
 });
 
 const tableResponse = await fetch(
-    "https://dokaansathi.onrender.com/api/restaurant-tables/status",
+    `${API_BASE_URL}/restaurant-tables/status`,
     {
         method: "PATCH",
         headers: {
@@ -491,36 +514,89 @@ console.log("========================================");
 
             {
 
-                cartItems.length === 0
+    cartItems.length === 0
 
-                    ?
+        ?
 
-                    <p>Your cart is empty.</p>
+        <p>Your cart is empty.</p>
 
-                    :
+        :
 
-                    cartItems.map((item) => (
+        cartItems.map((item) => (
 
-                        <div key={item.id}>
+            <div
+                key={`${item.id}-${item.plateType}`}
+                style={{
+                    border: "1px solid #ddd",
+                    borderRadius: "10px",
+                    padding: "12px",
+                    marginBottom: "10px"
+                }}
+            >
+
+                <div
+                    style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        gap: "15px"
+                    }}
+                >
+
+                    <div>
+
+                        <p>
+                            <strong>
+                                {item.name}
+                            </strong>
+
+                            {" × "}
+
+                            {item.quantity}
+                        </p>
+
+                        {item.plateType && (
 
                             <p>
-
-                                {item.name} × {item.quantity}
-
+                                Plate: {item.plateType}
                             </p>
 
-                            <p>
+                        )}
 
-                                ₹ {item.price * item.quantity}
+                        <p>
+                            ₹ {item.price * item.quantity}
+                        </p>
 
-                            </p>
+                    </div>
 
-                        </div>
 
-                    ))
+                    {/* DELETE BUTTON */}
 
-            }
+                    <button
+                        type="button"
+                        onClick={() =>
+                            removeItem(
+                                item.id,
+                                item.plateType
+                            )
+                        }
+                        style={{
+                            padding: "8px 12px",
+                            cursor: "pointer",
+                            border: "none",
+                            borderRadius: "6px"
+                        }}
+                    >
+                        🗑 Delete
+                    </button>
 
+                </div>
+
+            </div>
+
+        ))
+
+}
             <h2>Total : ₹ {total}</h2>
 {paymentMethod === "Cash" && (
 

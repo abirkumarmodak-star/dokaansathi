@@ -55,7 +55,7 @@ const CustomerMenu = () => {
             setError("");
 
             const response = await fetch(
-                "https://dokaansathi.onrender.com/api/menu"
+                "http://localhost:5000/api/menu"
             );
 
             const data =
@@ -134,117 +134,223 @@ const CustomerMenu = () => {
     // ===========================
     // ADD TO CART
     // ===========================
+const addToCart = (
+    item,
+    plateType
+) => {
 
-    const addToCart = (
-        item,
-        plateType
-    ) => {
-
-        // ===========================
-        // AVAILABILITY CHECK
-        // ===========================
-
-        if (
-            Number(item.available) !== 1
-        ) {
-
-            alert(
-                `${item.name} is currently unavailable`
-            );
-
-            return;
-
-        }
+    console.log("========== ADD TO CART DEBUG ==========");
+    console.log("ITEM:", item);
+    console.log("MENU ID:", item?.id);
+    console.log("FOOD:", item?.name);
+    console.log("CURRENT STOCK:", item?.current_stock);
+    console.log("STOCK QUANTITY:", item?.stock_quantity);
 
 
-        // ===========================
-        // PRICE
-        // ===========================
+    // ======================================
+    // AVAILABILITY CHECK
+    // ======================================
 
-        const price =
-            plateType === "Half"
-                ? Number(item.half_price)
-                : Number(item.full_price);
-
-
-        // ===========================
-        // GET SAVED CART
-        // ===========================
-
-        const savedCart =
-            JSON.parse(
-                localStorage.getItem("cart")
-            ) || [];
-
-
-        // ===========================
-        // CHECK EXISTING ITEM
-        // ===========================
-
-        const existingItem =
-            savedCart.find(
-
-                product =>
-
-                    product.id === item.id &&
-
-                    product.plateType === plateType
-
-            );
-
-
-        if (existingItem) {
-
-            existingItem.quantity += 1;
-
-        }
-
-        else {
-
-            savedCart.push({
-
-                id: item.id,
-
-                name: item.name,
-
-                category: item.category,
-
-                plateType: plateType,
-
-                price: price,
-
-                quantity: 1
-
-            });
-
-        }
-
-
-        // ===========================
-        // SAVE CART
-        // ===========================
-
-        localStorage.setItem(
-            "cart",
-            JSON.stringify(savedCart)
-        );
-
-        setCart(
-            savedCart
-        );
-
-
-        console.log(
-            "UPDATED CART :",
-            savedCart
-        );
-
+    if (
+        Number(item.available) !== 1
+    ) {
 
         alert(
-            `${item.name} (${plateType}) Added`
+            `${item.name} is currently unavailable`
         );
 
-    };
+        return;
+
+    }
+
+
+    // ======================================
+    // AVAILABLE INVENTORY STOCK
+    // ======================================
+
+    const availableStock = Number(
+        item?.current_stock ??
+        item?.stock_quantity ??
+        0
+    );
+
+
+    console.log(
+        "CALCULATED AVAILABLE STOCK:",
+        availableStock
+    );
+
+    console.log(
+        "PLATE TYPE:",
+        plateType
+    );
+
+
+    // ======================================
+    // GET SAVED CART
+    // ======================================
+
+    const savedCart =
+        JSON.parse(
+            localStorage.getItem("cart") || "[]"
+        );
+
+
+    // ======================================
+    // FIND EXISTING ITEM
+    // ======================================
+
+    const existingItem =
+        savedCart.find(
+
+            product =>
+
+                Number(product.id) ===
+                Number(item.id) &&
+
+                product.plateType ===
+                plateType
+
+        );
+
+
+    // ======================================
+    // CURRENT CART QUANTITY
+    // ======================================
+
+    const currentCartQuantity =
+        existingItem
+            ? Number(existingItem.quantity || 0)
+            : 0;
+
+
+    // ======================================
+    // NEW TOTAL QUANTITY
+    // ======================================
+
+    const newTotalQuantity =
+        currentCartQuantity + 1;
+
+
+    console.log(
+        "CURRENT CART QUANTITY:",
+        currentCartQuantity
+    );
+
+    console.log(
+        "NEW TOTAL QUANTITY:",
+        newTotalQuantity
+    );
+
+
+    // ======================================
+    // STOCK LIMIT CHECK
+    // ======================================
+
+    if (
+        newTotalQuantity >
+        availableStock
+    ) {
+
+        alert(
+            `${item.name} এর মাত্র ${availableStock} টি বাকি আছে।`
+        );
+
+        console.log(
+            "❌ STOCK LIMIT REACHED"
+        );
+
+        console.log(
+            "AVAILABLE:",
+            availableStock
+        );
+
+        console.log(
+            "REQUESTED:",
+            newTotalQuantity
+        );
+
+        return;
+
+    }
+
+
+    // ======================================
+    // PRICE
+    // ======================================
+
+    const price =
+        plateType === "Half"
+            ? Number(item.half_price)
+            : Number(item.full_price);
+
+
+    // ======================================
+    // UPDATE CART
+    // ======================================
+
+    if (existingItem) {
+
+        existingItem.quantity += 1;
+
+    }
+
+    else {
+
+        savedCart.push({
+
+            id: item.id,
+
+            name: item.name,
+
+            category: item.category,
+
+            plateType: plateType,
+
+            price: price,
+
+            quantity: 1
+
+        });
+
+    }
+
+
+    // ======================================
+    // SAVE CART
+    // ======================================
+
+    localStorage.setItem(
+        "cart",
+        JSON.stringify(savedCart)
+    );
+
+
+    setCart(
+        savedCart
+    );
+
+
+    console.log(
+        "UPDATED CART:",
+        savedCart
+    );
+
+
+    console.log(
+        "======================================"
+    );
+
+
+    // ======================================
+    // SUCCESS ALERT
+    // ======================================
+
+    alert(
+        `${item.name} (${plateType}) Added`
+    );
+
+};
 
 
     // ===========================

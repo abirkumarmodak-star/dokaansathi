@@ -10,21 +10,28 @@ exports.getMenu = (req, res) => {
 
     const sql = `
         SELECT
-            id,
-            name,
-            category,
-            half_price,
-            full_price,
-            available,
-            serving_type,
-            serving_size,
-            display_order,
-            image
+            menu.id,
+            menu.name,
+            menu.category,
+            menu.half_price,
+            menu.full_price,
+            menu.available,
+            menu.serving_type,
+            menu.serving_size,
+            menu.display_order,
+            menu.image,
+
+            inventory.current_stock
+
         FROM menu
+
+        LEFT JOIN inventory
+            ON inventory.menu_id = menu.id
+
         ORDER BY
-            category ASC,
-            display_order ASC,
-            name ASC
+            menu.category ASC,
+            menu.display_order ASC,
+            menu.name ASC
     `;
 
     db.query(sql, (err, results) => {
@@ -42,11 +49,15 @@ exports.getMenu = (req, res) => {
 
         }
 
+        console.log("MENU + INVENTORY DATA:", results);
+
         return res.status(200).json(results);
 
     });
 
 };
+    
+
 // ======================================
 // CREATE MENU ITEM
 // ======================================

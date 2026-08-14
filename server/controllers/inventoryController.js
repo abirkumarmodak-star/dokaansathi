@@ -33,7 +33,9 @@ exports.getInventory = (req, res) => {
     `;
 
     db.query(sql, (err, result) => {
-
+ console.log("========== INVENTORY API DEBUG ==========");
+    console.log("RAW INVENTORY RESULT:", result);
+    console.log("=========================================");
         if (err) {
 
             return res.status(500).json(err);
@@ -44,10 +46,10 @@ exports.getInventory = (req, res) => {
 
         
 
-   const remaining =
-    item.opening_stock -
-    item.online_sold -
-    item.offline_sold;
+const remaining =
+    Number(item.opening_stock || 0) -
+    Number(item.online_sold || 0) -
+    Number(item.offline_sold || 0);
 
 let status = "Available";
 

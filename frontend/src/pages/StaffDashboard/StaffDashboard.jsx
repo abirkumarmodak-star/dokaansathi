@@ -1,7 +1,11 @@
-import { useEffect, useState } from "react";
+ 
+
+
+import { useEffect, useState, useRef } from "react";
 import axios from "axios";
 import "./StaffDashboard.css";
 import { useNavigate } from "react-router-dom";
+
 const API_URL = "https://dokaansathi.onrender.com/api";
 
 function StaffDashboard() {
@@ -11,24 +15,65 @@ function StaffDashboard() {
     const [error, setError] = useState("");
 
     const [staff, setStaff] = useState(null);
-const navigate = useNavigate();
+
+    const navigate = useNavigate();
+
+    // ==========================================
+    // NOTIFICATION STATE
+    // ==========================================
+
+    const [notificationEnabled, setNotificationEnabled] = useState(
+        "Notification" in window &&
+        Notification.permission === "granted"
+    );
+
+    // ==========================================
+    // NEW ORDER TRACKING
+    // ==========================================
+
+    const previousPendingIds = useRef(new Set());
+    const firstOrderLoad = useRef(true);
+
+    // ==========================================
+    // NOTIFICATION AUDIO
+    // ==========================================
+
+    const notificationAudio = useRef(null);
+
+    useEffect(() => {
+
+        notificationAudio.current =
+            new Audio("/notification.mp3");
+
+        notificationAudio.current.preload = "auto";
+
+    }, []);
+
     // ==========================================
     // LOAD STAFF ACCOUNT
     // ==========================================
 
     useEffect(() => {
 
-        const savedStaff = localStorage.getItem("staff");
+        const savedStaff =
+            localStorage.getItem("staff");
 
         if (savedStaff) {
 
             try {
 
-                setStaff(JSON.parse(savedStaff));
+                setStaff(
+                    JSON.parse(savedStaff)
+                );
 
-            } catch (err) {
+            }
 
-                console.log("Staff data error:", err);
+            catch (err) {
+
+                console.log(
+                    "Staff data error:",
+                    err
+                );
 
             }
 
@@ -37,23 +82,185 @@ const navigate = useNavigate();
     }, []);
 
     // ==========================================
+    // ENABLE NOTIFICATIONS
+    // ==========================================
+
+    const enableNotifications = async () => {
+
+        if (!("Notification" in window)) {
+
+            alert(
+                "This browser does not support notifications."
+            );
+
+            return;
+
+        }
+
+        try {
+
+            const permission =
+                await Notification.requestPermission();
+
+            if (permission === "granted") {
+
+                setNotificationEnabled(true);
+
+                // ==================================
+                // PRELOAD / UNLOCK AUDIO
+                // ==================================
+
+                if (notificationAudio.current) {
+
+                    notificationAudio.current
+                        .load();
+
+                    notificationAudio.current
+                        .play()
+                        .then(() => {
+
+                            notificationAudio.current.pause();
+
+                            notificationAudio.current.currentTime = 0;
+
+                            console.log(
+                                "🔊 Notification sound unlocked"
+                            );
+
+                        })
+                        .catch((err) => {
+
+                            console.log(
+                                "Audio unlock failed:",
+                                err
+                            );
+
+                        });
+
+                }
+
+                // ==================================
+                // TEST NOTIFICATION
+                // ==================================
+
+                const notification =
+                    new Notification(
+                        "🔔 Dokaansathi Notifications Enabled",
+                        {
+                            body:
+                                "You will receive new order alerts here.",
+                            icon: "/favicon.svg"
+                        }
+                    );
+
+                setTimeout(() => {
+
+                    notification.close();
+
+                }, 5000);
+
+            }
+
+            else {
+
+                alert(
+                    "Notification permission was not granted."
+                );
+
+            }
+
+        }
+
+        catch (error) {
+
+            console.log(
+                "Notification permission error:",
+                error
+            );
+
+        }
+
+    };
+
+    // ==========================================
+    // NEW ORDER NOTIFICATION
+    // ==========================================
+
+    const notifyNewOrder = (order) => {
+
+        console.log(
+            "🔔 NEW ORDER NOTIFICATION:",
+            order
+        );
+
+        // ==========================================
+        // PLAY DING SOUND
+        // ==========================================
+
+        if (notificationAudio.current) {
+
+            notificationAudio.current.currentTime = 0;
+
+            notificationAudio.current
+                .play()
+                .then(() => {
+
+                    console.log(
+                        "🔊 DING PLAYED"
+                    );
+
+                })
+                .catch((err) => {
+
+                    console.log(
+                        "❌ DING BLOCKED:",
+                        err
+                    );
+
+                });
+
+        }
+
+        // ==========================================
+        // BROWSER NOTIFICATION
+        // ==========================================
+
+        if (
+            notificationEnabled &&
+            "Notification" in window &&
+            Notification.permission === "granted"
+        ) {
+
+            const notification =
+                new Notification(
+                    "🔔 New Order Received!",
+                    {
+                        body:
+                            `Order #${order.id} has been placed.`,
+                        icon: "/favicon.svg",
+                        requireInteraction: true
+                    }
+                );
+
+            notification.onclick = () => {
+
+                window.focus();
+
+                notification.close();
+
+            };
+
+        }
+
+    };
+
+    // ==========================================
     // LOAD ORDERS
     // ==========================================
 
     const loadOrders = async () => {
 
         try {
-
-            const savedStaff =
-                localStorage.getItem("staff");
-
-            let staffData = null;
-
-            if (savedStaff) {
-
-                staffData = JSON.parse(savedStaff);
-
-            }
 
             console.log(
                 "Loading Orders...",
@@ -69,16 +276,106 @@ const navigate = useNavigate();
                 res.data
             );
 
-            // Backend may return:
-            // { orders: [...] }
-            // OR
-            // [...]
+            // ==========================================
+            // NORMALIZE API RESPONSE
+            // ==========================================
 
-            const orderList = Array.isArray(res.data)
-                ? res.data
-                : Array.isArray(res.data.orders)
-                    ? res.data.orders
-                    : [];
+            const orderList =
+                Array.isArray(res.data)
+
+                    ? res.data
+
+                    : Array.isArray(res.data.orders)
+
+                        ? res.data.orders
+
+                        : [];
+
+            // ==========================================
+            // FIND PENDING ORDERS
+            // ==========================================
+
+            const pendingOrders =
+                orderList.filter(
+                    order =>
+                        order.order_status ===
+                        "Pending"
+                );
+
+            // ==========================================
+            // FIRST LOAD
+            // ==========================================
+
+            if (firstOrderLoad.current) {
+
+                previousPendingIds.current =
+                    new Set(
+                        pendingOrders.map(
+                            order => order.id
+                        )
+                    );
+
+                firstOrderLoad.current = false;
+
+                console.log(
+                    "Initial pending orders loaded:",
+                    pendingOrders.length
+                );
+
+            }
+
+            // ==========================================
+            // CHECK NEW PENDING ORDERS
+            // ==========================================
+
+            else {
+
+                const previousIds =
+                    previousPendingIds.current;
+
+                const newOrders =
+                    pendingOrders.filter(
+                        order =>
+                            !previousIds.has(
+                                order.id
+                            )
+                    );
+
+                console.log(
+                    "🆕 NEW ORDERS:",
+                    newOrders
+                );
+
+                // ======================================
+                // NOTIFY EACH NEW ORDER
+                // ======================================
+
+                newOrders.forEach(
+                    order => {
+
+                        notifyNewOrder(
+                            order
+                        );
+
+                    }
+                );
+
+                // ======================================
+                // UPDATE PREVIOUS PENDING IDS
+                // ======================================
+
+                previousPendingIds.current =
+                    new Set(
+                        pendingOrders.map(
+                            order => order.id
+                        )
+                    );
+
+            }
+
+            // ==========================================
+            // UPDATE ORDERS
+            // ==========================================
 
             setOrders(orderList);
 
@@ -128,15 +425,18 @@ const navigate = useNavigate();
 
         loadOrders();
 
-        const interval = setInterval(() => {
+        const interval =
+            setInterval(() => {
 
-            loadOrders();
+                loadOrders();
 
-        }, 5000);
+            }, 5000);
 
         return () => {
 
-            clearInterval(interval);
+            clearInterval(
+                interval
+            );
 
         };
 
@@ -157,7 +457,9 @@ const navigate = useNavigate();
                 }
             );
 
-            alert("Order Accepted");
+            alert(
+                "Order Accepted"
+            );
 
             loadOrders();
 
@@ -191,7 +493,9 @@ const navigate = useNavigate();
                 }
             );
 
-            alert("Order is now Preparing");
+            alert(
+                "Order is now Preparing"
+            );
 
             loadOrders();
 
@@ -225,7 +529,9 @@ const navigate = useNavigate();
                 }
             );
 
-            alert("Order Ready");
+            alert(
+                "Order Ready"
+            );
 
             loadOrders();
 
@@ -259,7 +565,9 @@ const navigate = useNavigate();
                 }
             );
 
-            alert("Order Completed");
+            alert(
+                "Order Completed"
+            );
 
             loadOrders();
 
@@ -284,9 +592,12 @@ const navigate = useNavigate();
 
     const logout = () => {
 
-        localStorage.removeItem("staff");
+        localStorage.removeItem(
+            "staff"
+        );
 
-        window.location.href = "/staff-login";
+        window.location.href =
+            "/staff-login";
 
     };
 
@@ -300,7 +611,9 @@ const navigate = useNavigate();
 
             <div className="staff-dashboard">
 
-                <h1>👨‍🍳 Staff Dashboard</h1>
+                <h1>
+                    👨‍🍳 Staff Dashboard
+                </h1>
 
                 <p>
                     Loading orders...
@@ -320,7 +633,9 @@ const navigate = useNavigate();
 
         <div className="staff-dashboard">
 
-            {/* HEADER */}
+            {/* ==================================
+                HEADER
+            ================================== */}
 
             <div className="staff-header">
 
@@ -335,6 +650,7 @@ const navigate = useNavigate();
                         <p>
 
                             Welcome,{" "}
+
                             <strong>
                                 {staff.name}
                             </strong>
@@ -342,6 +658,7 @@ const navigate = useNavigate();
                             {" | "}
 
                             Role:{" "}
+
                             <strong>
                                 {staff.role}
                             </strong>
@@ -352,15 +669,39 @@ const navigate = useNavigate();
 
                 </div>
 
+                {/* NOTIFICATION BUTTON */}
+
+                <button
+                    onClick={
+                        enableNotifications
+                    }
+                >
+
+                    {notificationEnabled
+
+                        ? "🔔 Notifications On"
+
+                        : "🔔 Enable Notifications"
+
+                    }
+
+                </button>
+
+                {/* LOGOUT */}
+
                 <button
                     onClick={logout}
                 >
+
                     Logout
+
                 </button>
 
             </div>
 
-            {/* SUMMARY */}
+            {/* ==================================
+                SUMMARY
+            ================================== */}
 
             <div className="staff-summary">
 
@@ -438,7 +779,9 @@ const navigate = useNavigate();
 
             </div>
 
-            {/* ERROR */}
+            {/* ==================================
+                ERROR
+            ================================== */}
 
             {error && (
 
@@ -447,16 +790,22 @@ const navigate = useNavigate();
                     ⚠️ {error}
 
                     <button
-                        onClick={loadOrders}
+                        onClick={
+                            loadOrders
+                        }
                     >
+
                         Retry
+
                     </button>
 
                 </div>
 
             )}
 
-            {/* ORDERS */}
+            {/* ==================================
+                ORDERS
+            ================================== */}
 
             <div className="orders-container">
 
@@ -477,194 +826,305 @@ const navigate = useNavigate();
 
                 ) : (
 
-                    orders.map((order) => (
+                    orders.map(
+                        (order) => (
 
-                        <div
-                            className="order-card"
-                            key={order.id}
-                        >
+                            <div
+                                className="order-card"
+                                key={order.id}
+                            >
 
-                            <div className="order-header">
+                                {/* ORDER HEADER */}
 
-                                <h2>
-                                    Order #{order.id}
-                                </h2>
+                                <div className="order-header">
 
-                                <span>
-                                    {order.order_status}
-                                </span>
+                                    <h2>
+                                        Order #{order.id}
+                                    </h2>
+
+                                    <span>
+                                        {
+                                            order.order_status
+                                        }
+                                    </span>
+
+                                </div>
+
+                                {/* CUSTOMER */}
+
+                                <p>
+
+                                    <strong>
+                                        Customer ID:
+                                    </strong>{" "}
+
+                                    {
+                                        order.customer_id ||
+                                        "-"
+                                    }
+
+                                </p>
+
+                                {/* TABLE */}
+
+                                <p>
+
+                                    <strong>
+                                        Table:
+                                    </strong>{" "}
+
+                                    {
+                                        order.table_number ||
+                                        "-"
+                                    }
+
+                                </p>
+
+                                {/* ORDER TYPE */}
+
+                                <p>
+
+                                    <strong>
+                                        Order Type:
+                                    </strong>{" "}
+
+                                    {
+                                        order.order_type ||
+                                        "-"
+                                    }
+
+                                </p>
+
+                                {/* PAYMENT */}
+
+                                <p>
+
+                                    <strong>
+                                        Payment:
+                                    </strong>{" "}
+
+                                    {
+                                        order.payment_status ||
+                                        "-"
+                                    }
+
+                                </p>
+
+                                {/* TOTAL */}
+
+                                <p>
+
+                                    <strong>
+                                        Total:
+                                    </strong>{" "}
+
+                                    ₹
+                                    {
+                                        order.total_amount ||
+                                        0
+                                    }
+
+                                </p>
+
+                                {/* ==================================
+                                    ORDER ITEMS
+                                ================================== */}
+
+                                {
+                                    Array.isArray(
+                                        order.items
+                                    ) &&
+                                    order.items.length > 0 &&
+                                    (
+
+                                        <div className="order-items">
+
+                                            <h3>
+                                                Items
+                                            </h3>
+
+                                            <ul>
+
+                                                {
+                                                    order.items.map(
+                                                        (
+                                                            item,
+                                                            index
+                                                        ) => (
+
+                                                            <li
+                                                                key={
+                                                                    index
+                                                                }
+                                                            >
+
+                                                                {
+                                                                    item.name ||
+                                                                    item.item_name ||
+                                                                    "Item"
+                                                                }
+
+                                                                {" × "}
+
+                                                                {
+                                                                    item.quantity
+                                                                }
+
+                                                            </li>
+
+                                                        )
+                                                    )
+                                                }
+
+                                            </ul>
+
+                                        </div>
+
+                                    )
+                                }
+
+                                {/* ==================================
+                                    ACTIONS
+                                ================================== */}
+
+                                <div className="order-actions">
+
+                                    {
+                                        order.order_status ===
+                                        "Pending" &&
+                                        (
+
+                                            <button
+                                                onClick={() =>
+                                                    acceptOrder(
+                                                        order.id
+                                                    )
+                                                }
+                                            >
+
+                                                Accept Order
+
+                                            </button>
+
+                                        )
+                                    }
+
+                                    {
+                                        order.order_status ===
+                                        "Accepted" &&
+                                        (
+
+                                            <button
+                                                onClick={() =>
+                                                    startPreparing(
+                                                        order.id
+                                                    )
+                                                }
+                                            >
+
+                                                Start Preparing
+
+                                            </button>
+
+                                        )
+                                    }
+
+                                    {
+                                        order.order_status ===
+                                        "Preparing" &&
+                                        (
+
+                                            <button
+                                                onClick={() =>
+                                                    markReady(
+                                                        order.id
+                                                    )
+                                                }
+                                            >
+
+                                                Mark Ready
+
+                                            </button>
+
+                                        )
+                                    }
+
+                                    {
+                                        order.order_status ===
+                                        "Ready" &&
+                                        (
+
+                                            <button
+                                                onClick={() =>
+                                                    completeOrder(
+                                                        order.id
+                                                    )
+                                                }
+                                            >
+
+                                                Complete Order
+
+                                            </button>
+
+                                        )
+                                    }
+
+                                    {/* WALK-IN */}
+
+                                    <button
+                                        onClick={() =>
+                                            navigate(
+                                                "/staff/walk-in"
+                                            )
+                                        }
+                                    >
+
+                                        🧓 Walk-in Customer
+
+                                    </button>
+
+                                    {/* COMPLETED */}
+
+                                    {
+                                        order.order_status ===
+                                        "Completed" &&
+                                        (
+
+                                            <button
+                                                disabled
+                                            >
+
+                                                ✔ Completed
+
+                                            </button>
+
+                                        )
+                                    }
+
+                                    {/* CANCELLED */}
+
+                                    {
+                                        order.order_status ===
+                                        "Cancelled" &&
+                                        (
+
+                                            <button
+                                                disabled
+                                            >
+
+                                                ❌ Cancelled
+
+                                            </button>
+
+                                        )
+                                    }
+
+                                </div>
 
                             </div>
 
-                            <p>
-                                <strong>
-                                    Customer ID:
-                                </strong>{" "}
-                                {order.customer_id || "-"}
-                            </p>
-
-                            <p>
-                                <strong>
-                                    Table:
-                                </strong>{" "}
-                                {order.table_number || "-"}
-                            </p>
-
-                            <p>
-                                <strong>
-                                    Order Type:
-                                </strong>{" "}
-                                {order.order_type || "-"}
-                            </p>
-
-                            <p>
-                                <strong>
-                                    Payment:
-                                </strong>{" "}
-                                {order.payment_status || "-"}
-                            </p>
-
-                            <p>
-                                <strong>
-                                    Total:
-                                </strong>{" "}
-                                ₹{order.total_amount || 0}
-                            </p>
-
-                            {/* ORDER ITEMS */}
-
-                            {Array.isArray(order.items) &&
-                                order.items.length > 0 && (
-
-                                    <div className="order-items">
-
-                                        <h3>
-                                            Items
-                                        </h3>
-
-                                        <ul>
-
-                                            {order.items.map(
-                                                (item, index) => (
-
-                                                    <li
-                                                        key={index}
-                                                    >
-
-                                                        {item.name ||
-                                                            item.item_name ||
-                                                            "Item"}
-
-                                                        {" × "}
-
-                                                        {item.quantity}
-
-                                                    </li>
-
-                                                )
-                                            )}
-
-                                        </ul>
-
-                                    </div>
-
-                                )}
-
-                            {/* ACTIONS */}
-
-                            <div className="order-actions">
-
-                                {order.order_status ===
-                                    "Pending" && (
-
-                                    <button
-                                        onClick={() =>
-                                            acceptOrder(
-                                                order.id
-                                            )
-                                        }
-                                    >
-                                        Accept Order
-                                    </button>
-
-                                )}
-
-                                {order.order_status ===
-                                    "Accepted" && (
-
-                                    <button
-                                        onClick={() =>
-                                            startPreparing(
-                                                order.id
-                                            )
-                                        }
-                                    >
-                                        Start Preparing
-                                    </button>
-
-                                )}
-
-                                {order.order_status ===
-                                    "Preparing" && (
-
-                                    <button
-                                        onClick={() =>
-                                            markReady(
-                                                order.id
-                                            )
-                                        }
-                                    >
-                                        Mark Ready
-                                    </button>
-
-                                )}
-
-                                {order.order_status ===
-                                    "Ready" && (
-
-                                    <button
-                                        onClick={() =>
-                                            completeOrder(
-                                                order.id
-                                            )
-                                        }
-                                    >
-                                        Complete Order
-                                    </button>
-
-                                )}
-<button
-    onClick={() => navigate("/staff/walk-in")}
->
-    🧓 Walk-in Customer
-</button>
-                                {order.order_status ===
-                                    "Completed" && (
-
-                                    <button
-                                        disabled
-                                    >
-                                        ✔ Completed
-                                    </button>
-
-                                )}
-
-                                {order.order_status ===
-                                    "Cancelled" && (
-
-                                    <button
-                                        disabled
-                                    >
-                                        ❌ Cancelled
-                                    </button>
-                                    
-                                )}
-
-                            </div>
-
-                        </div>
-
-                    ))
+                        )
+                    )
 
                 )}
 
@@ -677,5 +1137,3 @@ const navigate = useNavigate();
 }
 
 export default StaffDashboard;
-
-
