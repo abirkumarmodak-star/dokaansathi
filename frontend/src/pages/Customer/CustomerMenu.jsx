@@ -55,7 +55,7 @@ const CustomerMenu = () => {
             setError("");
 
             const response = await fetch(
-                "http://localhost:5000/api/menu"
+                "https://dokaansathi.onrender.com/api/menu"
             );
 
             const data =
