@@ -1,4 +1,34 @@
 const mysql = require("mysql2");
+const crypto = require("crypto");
+
+// ==============================
+// SAFE DATABASE CONFIG DEBUG
+// ==============================
+
+const password = process.env.DB_PASSWORD || "";
+
+console.log("========== DB ENV DEBUG ==========");
+console.log("DB_HOST:", process.env.DB_HOST);
+console.log("DB_USER:", process.env.DB_USER);
+console.log("DB_NAME:", process.env.DB_NAME);
+console.log("DB_PORT:", process.env.DB_PORT);
+console.log("PASSWORD_PRESENT:", password.length > 0);
+console.log("PASSWORD_LENGTH:", password.length);
+
+console.log(
+    "PASSWORD_HASH:",
+    crypto
+        .createHash("sha256")
+        .update(password)
+        .digest("hex")
+);
+
+console.log("===================================");
+
+
+// ==============================
+// MYSQL CONNECTION POOL
+// ==============================
 
 const db = mysql.createPool({
     host: process.env.DB_HOST,
@@ -89,5 +119,9 @@ db.getConnection((err, connection) => {
 
 });
 
+
+// ==============================
+// EXPORT
+// ==============================
 
 module.exports = db;
