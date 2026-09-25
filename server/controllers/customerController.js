@@ -39,47 +39,62 @@ exports.getCustomers = (req, res) => {
 // ==============================
 // ADD CUSTOMER
 // ==============================
+// ==============================
+// ADD CUSTOMER
+// ==============================
 exports.createCustomer = (req, res) => {
 
     console.log("🔥 CREATE CUSTOMER FUNCTION RUNNING");
 
-
     console.log("REQUEST BODY:", req.body);
 
 
-   const {
-    name,
-    phone,
-    orderType,
-    tableNumber
-} = req.body;
-
+    const {
+        name,
+        phone,
+        orderType,
+        tableNumber,
+        delivery_address,
+        latitude,
+        longitude
+    } = req.body;
 
 
     const sql = `
         INSERT INTO customers
-(name, phone, orderType, tableNumber)
-VALUES (?, ?, ?, ?)
+        (
+            name,
+            phone,
+            orderType,
+            tableNumber,
+            delivery_address,
+            latitude,
+            longitude
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?)
     `;
-
 
 
     db.query(
         sql,
-       [
-    name,
-    phone,
-    orderType,
-    tableNumber || null
-],
+        [
+            name,
+            phone,
+            orderType,
+            tableNumber || null,
+            delivery_address || null,
+            latitude || null,
+            longitude || null
+        ],
 
         (err, result) => {
 
-
             if (err) {
 
-                console.log("MYSQL INSERT ERROR:", err);
-
+                console.log(
+                    "MYSQL INSERT ERROR:",
+                    err
+                );
 
                 return res.status(500).json({
                     message: "Database Error"
@@ -88,22 +103,23 @@ VALUES (?, ?, ?, ?)
             }
 
 
-
-            console.log("INSERT SUCCESS:", result);
-
+            console.log(
+                "INSERT SUCCESS:",
+                result
+            );
 
 
             res.status(201).json({
 
-                message: "Customer Added Successfully",
+                message:
+                    "Customer Added Successfully",
 
-                customerId: result.insertId
+                customerId:
+                    result.insertId
 
             });
-
 
         }
     );
 
 };
-

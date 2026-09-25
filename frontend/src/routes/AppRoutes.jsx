@@ -4,7 +4,7 @@ import Login from "../pages/Login/Login";
 import Dashboard from "../pages/Dashboard/Dashboard";
 import Orders from "../pages/Orders/Orders";
 import Menu from "../pages/Menu/Menu";
-import QRMenu from "../pages/customer/QRMenu";
+import QRMenu from "../pages/Customer/QRMenu";
 function AppRoutes() {
     return (
         <BrowserRouter>

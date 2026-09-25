@@ -46,23 +46,18 @@ exports.getInventory = (req, res) => {
 
         
 
-const remaining =
-    Number(item.opening_stock || 0) -
-    Number(item.online_sold || 0) -
-    Number(item.offline_sold || 0);
+const remaining = Number(item.current_stock || 0);
 
 let status = "Available";
 
 if (remaining <= 0) {
-
     status = "Out Of Stock";
-
 }
-else if (remaining <= item.reorder_level) {
-
+else if (remaining <= Number(item.reorder_level || 0)) {
     status = "Low Stock";
-
 }
+
+const isOutOfStock = remaining <= 0;
 
 return {
 
@@ -74,19 +69,27 @@ return {
 
     category: item.category,
 
-    prepared: item.opening_stock,
+    prepared: isOutOfStock
+        ? 0
+        : remaining,
 
-    onlineSold: item.online_sold,
+    onlineSold: isOutOfStock
+        ? 0
+        : Number(item.online_sold || 0),
 
-    offlineSold: item.offline_sold,
+    offlineSold: isOutOfStock
+        ? 0
+        : Number(item.offline_sold || 0),
 
-    remaining: remaining,
+    remaining: isOutOfStock
+        ? 0
+        : remaining,
 
     unit: "Plate",
 
     status
 
-};        
+};
 
 
         });

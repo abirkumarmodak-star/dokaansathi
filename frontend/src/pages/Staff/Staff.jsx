@@ -7,12 +7,14 @@ function Staff() {
 
     const [staff, setStaff] = useState([]);
 
-    const [form, setForm] = useState({
-        name: "",
-        phone: "",
-        password: "",
-        role: "Counter"
-    });
+  const [form, setForm] = useState({
+    name: "",
+    phone: "",
+    password: "",
+    role: "Counter",
+    work_start_time: "",
+    work_end_time: ""
+});
 
     // ======================================================
     // GET OWNER TOKEN
@@ -46,9 +48,12 @@ function Staff() {
 
                 return;
             }
+console.log("========== STAFF GET DEBUG ==========");
+console.log("TOKEN =", localStorage.getItem("token"));
+console.log("TOKEN LENGTH =", localStorage.getItem("token")?.length);
+console.log("=====================================");
 
-
-            const response = await fetch("https://dokaansathi.onrender.com/api/staff", {
+            const response = await fetch("http://localhost:5000/api/staff", {
     headers: {
         Authorization: `Bearer ${localStorage.getItem("token")}`
     }
@@ -122,7 +127,7 @@ function Staff() {
     // ======================================================
 
     const addStaff = async () => {
-
+ console.log("FORM BEFORE CREATE =", form);
         if (
             form.name === "" ||
             form.phone === "" ||
@@ -149,7 +154,7 @@ function Staff() {
 
             const response = await fetch(
 
-                "https://dokaansathi.onrender.com/api/staff",
+                 "http://localhost:5000/api/staff",
 
                 {
                     method: "POST",
@@ -189,14 +194,14 @@ function Staff() {
 
             // Clear form only after successful creation
 
-            setForm({
-
-                name: "",
-                phone: "",
-                password: "",
-                role: "Counter"
-
-            });
+       setForm({
+    name: "",
+    phone: "",
+    password: "",
+    role: "Counter",
+    work_start_time: "",
+    work_end_time: ""
+});
 
 
             // Reload staff list
@@ -288,9 +293,37 @@ function Staff() {
                         <option value="Waiter">
                             Waiter
                         </option>
-
+<option value="DeliveryBoy">
+    Delivery Boy
+</option>
                     </select>
+{form.role === "DeliveryBoy" && (
+    <div className="working-hours">
+        <label>Working Hours</label>
 
+        <div className="working-time-row">
+            <div>
+                <label>Work From</label>
+                <input
+                    type="time"
+                    name="work_start_time"
+                    value={form.work_start_time}
+                    onChange={handleChange}
+                />
+            </div>
+
+            <div>
+                <label>Work Until</label>
+                <input
+                    type="time"
+                    name="work_end_time"
+                    value={form.work_end_time}
+                    onChange={handleChange}
+                />
+            </div>
+        </div>
+    </div>
+)}
 
                     <button onClick={addStaff}>
                         ➕ Add Staff
@@ -317,7 +350,7 @@ function Staff() {
                             <th>Phone</th>
 
                             <th>Role</th>
-
+<th>Working Hours</th>
                             <th>Status</th>
 
                         </tr>
@@ -340,7 +373,11 @@ function Staff() {
                                     <td>{item.phone}</td>
 
                                     <td>{item.role}</td>
-
+<td>
+    {item.role === "DeliveryBoy"
+        ? `${item.work_start_time || "--"} - ${item.work_end_time || "--"}`
+        : "--"}
+</td>
                                     <td>{item.status}</td>
 
                                 </tr>

@@ -1,30 +1,49 @@
 require("dotenv").config();
 
-const db = require("./config/db");
+const mysql = require("mysql2");
 
-console.log("Checking alerts for test orders...");
+const db = mysql.createConnection({
+    host: process.env.DB_HOST,
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
+    database: process.env.DB_NAME,
+    port: Number(process.env.DB_PORT),
+    ssl: {
+        rejectUnauthorized: false
+    }
+});
 
-const sql = `
-    SELECT
-        id,
-        order_id
-    FROM alerts
-    WHERE order_id BETWEEN 8 AND 45
-    ORDER BY order_id DESC
-`;
-
-db.query(sql, (err, results) => {
+db.connect((err) => {
 
     if (err) {
-
-        console.log("❌ DATABASE ERROR:");
-        console.log(err);
-
-        process.exit(1);
+        console.log("❌ CONNECTION ERROR");
+        console.log(err.message);
+        return;
     }
 
-    console.log("========== TEST ORDER ALERTS ==========");
-    console.table(results);
+    console.log("✅ AIVEN CONNECTED");
 
-    process.exit(0);
+    db.query(
+        "SHOW TABLES LIKE 'delivery_assignments'",
+        (err, result) => {
+
+            if (err) {
+                console.log("❌ QUERY ERROR");
+                console.log(err.message);
+            } else {
+
+                console.log(
+                    "========== AIVEN DELIVERY TABLE =========="
+                );
+
+                console.log(result);
+
+                console.log(
+                    "=========================================="
+                );
+            }
+
+            db.end();
+        }
+    );
 });

@@ -1,0 +1,181 @@
+exports.getOrderByToken = (req, res) => {
+
+    const token =
+        req.params.token;
+
+    console.log(
+        "🔎 GET ORDER BY TOKEN:",
+        token
+    );
+
+
+    if (!token) {
+
+        return res.status(400).json({
+            success: false,
+            message: "Token is required"
+        });
+
+    }
+
+
+    const orderSql = `
+        SELECT
+            o.*,
+
+            c.name AS customer_name,
+            c.phone AS customer_phone,
+            c.orderType AS customer_order_type,
+            c.tableNumber AS customer_table_number,
+            c.delivery_address,
+            c.latitude AS customer_latitude,
+            c.longitude AS customer_longitude,
+
+            s.shop_name,
+            s.phone AS shop_phone,
+            s.address AS shop_address,
+            s.latitude AS shop_latitude,
+            s.longitude AS shop_longitude
+
+        FROM orders o
+
+        LEFT JOIN customers c
+            ON c.id = o.customer_id
+
+        LEFT JOIN shop_settings s
+            ON s.id = o.shop_id
+
+        WHERE o.token_number = ?
+
+        LIMIT 1
+    `;
+
+
+    db.query(
+        orderSql,
+        [token],
+        (err, orders) => {
+
+            if (err) {
+
+                console.error(
+                    "❌ GET ORDER BY TOKEN ERROR:",
+                    err
+                );
+
+                return res.status(500).json({
+                    success: false,
+                    message: "Database error",
+                    error: err.message
+                });
+
+            }
+
+
+            if (
+                !orders ||
+                orders.length === 0
+            ) {
+
+                return res.status(404).json({
+                    success: false,
+                    message: "Order not found"
+                });
+
+            }
+
+
+            const order =
+                orders[0];
+
+
+            const itemsSql = `
+                SELECT
+                    oi.*,
+                    m.item_name,
+                    m.price
+
+                FROM order_items oi
+
+                LEFT JOIN menu m
+                    ON m.id = oi.menu_id
+
+                WHERE oi.order_id = ?
+            `;
+
+
+            db.query(
+                itemsSql,
+                [order.id],
+                (
+                    itemErr,
+                    items
+                ) => {
+
+                    if (itemErr) {
+
+                        console.error(
+                            "❌ ORDER ITEMS ERROR:",
+                            itemErr
+                        );
+
+                        return res.status(500).json({
+                            success: false,
+                            message:
+                                "Failed to load order items",
+                            error:
+                                itemErr.message
+                        });
+
+                    }
+
+
+                    order.items =
+                        items || [];
+
+
+                    return res.status(200).json({
+
+                        success: true,
+
+                        order
+
+                    });
+
+                }
+            );
+
+        }
+    );
+
+};
+
+
+// ============================================================
+// ACCEPT SINGLE ORDER
+// POST /api/orders/accept
+// Body: { order_id }
+// ============================================================
+
+exports.acceptOrder = (req, res) => {
+
+    const {
+        order_id
+    } = req.body;
+
+
+    console.log(
+        "🔥 ACCEPT ORDER:",
+        order_id
+    );
+
+
+    if (!order_id) {
+
+        return res.status(400).json({
+            success: false,
+            message:
+                "order_id is required"
+        });
+
+    }

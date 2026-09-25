@@ -1,4 +1,3 @@
-
 const db = require("../config/db");
 
 // =====================================
@@ -10,84 +9,85 @@ exports.checkPendingOrders = () => {
     console.log("🔍 Checking Pending Orders...");
 
     const sql = `
-        SELECT *
-        FROM orders
-        WHERE order_status = 'Pending'
+        SELECT
+            o.id,
+            o.token_number
+        FROM orders o
+        WHERE o.order_status = 'Pending'
+        AND NOT EXISTS (
+            SELECT 1
+            FROM alerts a
+            WHERE a.order_id = o.id
+            AND a.alert_type = 'PENDING_ORDER'
+            AND a.is_read = 0
+        )
     `;
 
     db.query(sql, (err, orders) => {
 
         if (err) {
-            console.log(err);
+
+            console.log(
+                "❌ PENDING ORDER CHECK ERROR:",
+                err
+            );
+
             return;
         }
 
-        console.log(`Pending Orders Found : ${orders.length}`);
+        console.log(
+            `Pending Orders Requiring Alert : ${orders.length}`
+        );
 
-        orders.forEach((order) => {
+        if (orders.length === 0) {
 
-            // একই alert আগেই আছে কিনা check করো
-            const checkSql = `
-                SELECT *
-                FROM alerts
-                WHERE order_id = ?
-                AND alert_type = 'PENDING_ORDER'
-                AND is_read = 0
-            `;
+            return;
+        }
 
-            db.query(checkSql, [order.id], (err, existing) => {
+        const insertSql = `
+            INSERT INTO alerts
+            (
+                order_id,
+                user_type,
+                alert_type,
+                message
+            )
+            VALUES ?
+        `;
 
-                if (err) {
-                    console.log(err);
+        const values = orders.map((order) => [
+
+            order.id,
+
+            "owner",
+
+            "PENDING_ORDER",
+
+            `Token ${order.token_number} এখনও Accept করা হয়নি।`
+
+        ]);
+
+        db.query(
+            insertSql,
+            [values],
+            (insertErr, result) => {
+
+                if (insertErr) {
+
+                    console.log(
+                        "❌ ALERT INSERT ERROR:",
+                        insertErr
+                    );
+
                     return;
                 }
 
-                // যদি alert আগে থেকেই থাকে তাহলে নতুন alert বানাবে না
-                if (existing.length > 0) {
-                    return;
-                }
-
-                // নতুন Alert Insert
-                const insertSql = `
-                    INSERT INTO alerts
-                    (
-                        order_id,
-                        user_type,
-                        alert_type,
-                        message
-                    )
-                    VALUES (?, ?, ?, ?)
-                `;
-
-                db.query(
-
-                    insertSql,
-
-                    [
-                        order.id,
-                        "owner",
-                        "PENDING_ORDER",
-                        `Token ${order.token_number} এখনও Accept করা হয়নি।`
-                    ],
-
-                    (err) => {
-
-                        if (err) {
-                            console.log(err);
-                            return;
-                        }
-
-                        console.log(
-                            `✅ Alert Created for Token ${order.token_number}`
-                        );
-
-                    }
-
+                console.log(
+                    `✅ ${result.affectedRows} Pending Order Alert(s) Created`
                 );
 
-            });
-
-        });
+            }
+        );
 
     });
 

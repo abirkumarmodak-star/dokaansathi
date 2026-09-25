@@ -4,15 +4,26 @@ function OrderSuccess() {
 
     const navigate = useNavigate();
 
-    const tokenNumber = localStorage.getItem("tokenNumber");
+    const tokenNumber =
+        localStorage.getItem("tokenNumber");
 
-    const qrCode = localStorage.getItem("qrCode");
+    const cashbackAmount =
+        Number(
+            localStorage.getItem(
+                "cashbackAmount"
+            ) || 0
+        );
+
+    const qrCode =
+        localStorage.getItem("qrCode");
+
 
     const orderAgain = () => {
 
-    navigate("/customer-menu");
+        navigate("/customer-menu");
 
-};
+    };
+
 
     return (
 
@@ -23,25 +34,52 @@ function OrderSuccess() {
             }}
         >
 
-            <h1>🎉 Order Placed Successfully</h1>
+            <h1>
+                🎉 Order Placed Successfully
+            </h1>
 
-            <h2>Thank You For Ordering</h2>
+            <h2>
+                Thank You For Ordering
+            </h2>
+
 
             <h3>
-
                 🪙 Token Number : {tokenNumber}
-
             </h3>
 
+
+            {/* ==================================================
+                CASHBACK
+            ================================================== */}
+
+            {cashbackAmount > 0 && (
+
+                <h3>
+
+                    🎉 Now you are able to get ₹
+                    {cashbackAmount}
+                    {" "}
+                    cashback.
+
+                </h3>
+
+            )}
+
+
             <button
-    onClick={() => navigate("/order-tracking")}
->
+                onClick={() =>
+                    navigate("/order-tracking")
+                }
+            >
 
-    📦 Track Order
+                📦 Track Order
 
-</button>
+            </button>
 
-<br /><br />
+
+            <br />
+            <br />
+
 
             <button
                 onClick={orderAgain}
