@@ -26,7 +26,7 @@ function OrderTracking() {
 
         try {
             const response = await fetch(
-                `http://localhost:5000/api/orders/token/${token}`
+                `https://dokaansathi.onrender.com/api/orders/token/${token}`
             );
 
             const data = await response.json();
@@ -72,7 +72,7 @@ function OrderTracking() {
 
         try {
             const response = await fetch(
-                "http://localhost:5000/api/orders/cancel",
+              "https://dokaansathi.onrender.com/api/orders/cancel",
                 {
                     method: "PUT",
                     headers: {

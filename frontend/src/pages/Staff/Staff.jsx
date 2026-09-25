@@ -53,7 +53,7 @@ console.log("TOKEN =", localStorage.getItem("token"));
 console.log("TOKEN LENGTH =", localStorage.getItem("token")?.length);
 console.log("=====================================");
 
-            const response = await fetch("http://localhost:5000/api/staff", {
+            const response = await fetch("https://dokaansathi.onrender.com/api/staff", {
     headers: {
         Authorization: `Bearer ${localStorage.getItem("token")}`
     }
@@ -154,7 +154,7 @@ console.log("=====================================");
 
             const response = await fetch(
 
-                 "http://localhost:5000/api/staff",
+                 "https://dokaansathi.onrender.com/api/staff",
 
                 {
                     method: "POST",

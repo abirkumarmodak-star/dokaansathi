@@ -8,7 +8,7 @@ import { Html5Qrcode } from "html5-qrcode";
 // BACKEND API
 // ======================================================
 
-const API_URL = "http://localhost:5000/api";
+const API_URL = "https://dokaansathi.onrender.com/api";
 
 const urlBase64ToUint8Array = (base64String) => {
 
@@ -3939,7 +3939,7 @@ const logout = () => {
 
                                     const response =
                                         await fetch(
-                                            `http://localhost:5000/api/delivery-assignments/deliver/${order.assignment_id}`,
+                                           `${API_URL}/delivery-assignments/deliver/${order.assignment_id}`,
                                             {
                                                 method:
                                                     "PATCH",
@@ -4102,7 +4102,7 @@ const logout = () => {
 
                     const response =
                         await fetch(
-                            `http://localhost:5000/api/delivery-assignments/settle-cashback/${order.assignment_id}`,
+                            `${API_URL}/delivery-assignments/settle-cash/${order.assignment_id}`,
                             {
                                 method: "PATCH",
 
@@ -4240,7 +4240,7 @@ const logout = () => {
 
                         const response =
                             await fetch(
-                                "http://localhost:5000/api/delivery-assignments/settle-cancellation-cash",
+                                `${API_URL}/delivery-assignments/settle-cancellation-cash`,
                                 {
                                     method:
                                         "PATCH",

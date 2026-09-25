@@ -29,7 +29,7 @@ const loadInventory = async () => {
 
         const response = await fetch(
       
-    "http://localhost:5000/api/inventory"
+   "https://dokaansathi.onrender.com/api/inventory"
 );
         
 
