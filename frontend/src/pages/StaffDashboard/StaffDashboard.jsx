@@ -409,12 +409,10 @@ const [managerDeliveryAlert, setManagerDeliveryAlert] =
                         readerId
                     );
 
-                await scanner.start(
-                    {
-                        facingMode: {
-                            exact: "environment"
-                        }
-                    },
+               await scanner.start(
+    {
+        facingMode: "environment"
+    },
                     {
                         fps: 10,
                         qrbox: {
