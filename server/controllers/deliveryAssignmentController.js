@@ -131,12 +131,7 @@ AND s.on_leave = 0
 
                 AND da.id IS NULL
 
-                AND o.order_status IN (
-                    'Pending',
-                    'Accepted',
-                    'Preparing',
-                    'Ready'
-                )
+             AND o.order_status = 'Pending'
 
                 ORDER BY o.id ASC
 
@@ -2905,54 +2900,51 @@ const onlineStatus = "Offline";
 // SETTLE CUSTOMER CANCELLATION CASH
 // DeliveryBoy physically cash দেওয়ার পরে এই API call করবে
 // ======================================================
-
 exports.settleCancellationCash = (req, res) => {
 
-    console.log(
-        "💵 SETTLE CANCELLATION CASH ROUTE HIT"
-    );
+    console.log("💵 SETTLE CANCELLATION CASH ROUTE HIT");
 
     const deliveryBoyId =
         req.user?.id ||
         req.user?.userId ||
         req.user?.staffId;
 
-    const customerId =
-        req.body.customer_id;
+    const customerId = req.body.customer_id;
 
-    // ------------------------------------------
-    // DELIVERY BOY LOGIN CHECK
-    // ------------------------------------------
+
+    // ==================================================
+    // 1. DELIVERY BOY AUTH CHECK
+    // ==================================================
 
     if (!deliveryBoyId) {
 
         return res.status(401).json({
             success: false,
-            message:
-                "Delivery Boy authentication required"
+            message: "Unauthorized Delivery Boy."
         });
 
     }
 
-    // ------------------------------------------
-    // CUSTOMER ID CHECK
-    // ------------------------------------------
+
+    // ==================================================
+    // 2. CUSTOMER ID CHECK
+    // ==================================================
 
     if (!customerId) {
 
         return res.status(400).json({
             success: false,
-            message:
-                "customer_id is required"
+            message: "Customer ID is required."
         });
 
     }
 
-    // ------------------------------------------
-    // FIRST CHECK CUSTOMER CASH
-    // ------------------------------------------
 
-    const checkSQL = `
+    // ==================================================
+    // 3. GET CUSTOMER PENDING CANCELLATION AMOUNT
+    // ==================================================
+
+    const checkCustomerSQL = `
         SELECT
             id,
             name,
@@ -2962,132 +2954,310 @@ exports.settleCancellationCash = (req, res) => {
         LIMIT 1
     `;
 
+
     db.query(
-        checkSQL,
+        checkCustomerSQL,
         [customerId],
         (checkError, customerResult) => {
 
             if (checkError) {
 
                 console.log(
-                    "❌ CHECK CUSTOMER CASH ERROR:",
+                    "❌ CHECK CUSTOMER ERROR:",
                     checkError
                 );
 
                 return res.status(500).json({
                     success: false,
-                    message:
-                        "Failed to check customer cash",
-                    error:
-                        checkError.sqlMessage ||
-                        checkError.message
+                    message: "Failed to check customer.",
+                    error: checkError.message
                 });
 
             }
 
-            if (
-                customerResult.length === 0
-            ) {
+
+            if (!customerResult || customerResult.length === 0) {
 
                 return res.status(404).json({
                     success: false,
-                    message:
-                        "Customer not found"
+                    message: "Customer not found."
                 });
 
             }
 
-            const customer =
-                customerResult[0];
+
+            const customer = customerResult[0];
+
 
             const pendingAmount =
                 Number(
                     customer.pending_cancellation_amount
                 ) || 0;
 
-            // ------------------------------------------
-            // NOTHING TO SETTLE
-            // ------------------------------------------
+
+            // ==================================================
+            // 4. CHECK PENDING CANCELLATION AMOUNT
+            // ==================================================
 
             if (pendingAmount <= 0) {
 
                 return res.status(400).json({
                     success: false,
                     message:
-                        "No pending cancellation cash for this customer"
+                        "No pending cancellation amount found."
                 });
 
             }
 
-            // ------------------------------------------
-            // CLEAR PENDING CASH
-            // ------------------------------------------
 
-            const updateSQL = `
-                UPDATE customers
-                SET pending_cancellation_amount = 0.00
-                WHERE id = ?
+            // ==================================================
+            // 5. FIND CUSTOMER'S CURRENT / NEXT ELIGIBLE ORDER
+            //
+            // Food Total will be calculated ONLY from
+            // order_items.subtotal
+            //
+            // Delivery fee will NOT be included.
+            // ==================================================
+
+            const orderSQL = `
+
+                SELECT
+                    o.id AS order_id,
+                    o.order_status,
+                    o.order_type,
+
+                    COALESCE(
+                        SUM(oi.subtotal),
+                        0
+                    ) AS food_total
+
+                FROM orders o
+
+                LEFT JOIN order_items oi
+                    ON oi.order_id = o.id
+
+                WHERE
+                    o.customer_id = ?
+
+                    AND o.order_status NOT IN (
+                        'Cancelled'
+                    )
+
+                GROUP BY
+                    o.id,
+                    o.order_status,
+                    o.order_type
+
+                ORDER BY
+                    o.id DESC
+
+                LIMIT 1
+
             `;
 
-            db.query(
-                updateSQL,
-                [customerId],
-                (updateError, updateResult) => {
 
-                    if (updateError) {
+            db.query(
+                orderSQL,
+                [customerId],
+                (orderError, orderResult) => {
+
+                    if (orderError) {
 
                         console.log(
-                            "❌ SETTLE CASH UPDATE ERROR:",
-                            updateError
+                            "❌ CHECK CUSTOMER ORDER ERROR:",
+                            orderError
                         );
 
                         return res.status(500).json({
                             success: false,
                             message:
-                                "Failed to settle cancellation cash",
+                                "Failed to check customer's order.",
                             error:
-                                updateError.sqlMessage ||
-                                updateError.message
+                                orderError.message
                         });
 
                     }
 
-                    console.log(
-                        "✅ CANCELLATION CASH SETTLED"
-                    );
+
+                    // ==================================================
+                    // 6. CUSTOMER MUST HAVE A NEW ORDER
+                    // ==================================================
+
+                    if (
+                        !orderResult ||
+                        orderResult.length === 0
+                    ) {
+
+                        return res.status(400).json({
+                            success: false,
+                            message:
+                                "Customer must place a new order of at least ₹500 before cancellation cash can be given."
+                        });
+
+                    }
+
+
+                    const currentOrder =
+                        orderResult[0];
+
+
+                    const foodTotal =
+                        Number(
+                            currentOrder.food_total
+                        ) || 0;
+
 
                     console.log(
-                        "Customer ID =",
-                        customerId
+                        "🧾 CANCELLATION CASH CHECK:",
+                        {
+                            customerId,
+                            orderId:
+                                currentOrder.order_id,
+                            foodTotal,
+                            pendingAmount
+                        }
                     );
+
+
+                    // ==================================================
+                    // 7. ₹500 FOOD TOTAL CHECK
+                    // ==================================================
+
+                    if (foodTotal < 500) {
+
+                        return res.status(400).json({
+                            success: false,
+
+                            message:
+                                `Cancellation cash cannot be given yet. Customer's current food total is ₹${foodTotal.toFixed(2)}. Minimum required food total is ₹500.`,
+
+                            customer_id:
+                                Number(customerId),
+
+                            current_order_id:
+                                Number(
+                                    currentOrder.order_id
+                                ),
+
+                            food_total:
+                                foodTotal,
+
+                            minimum_food_total:
+                                500,
+
+                            pending_cancellation_amount:
+                                pendingAmount
+                        });
+
+                    }
+
+
+                    // ==================================================
+                    // 8. ₹500 CONDITION PASSED
+                    // ==================================================
 
                     console.log(
-                        "Amount Settled =",
-                        pendingAmount
+                        "✅ ₹500 FOOD TOTAL CONDITION PASSED"
                     );
 
-                    console.log(
-                        "DeliveryBoy ID =",
-                        deliveryBoyId
+
+                    // ==================================================
+                    // 9. SETTLE CANCELLATION CASH
+                    // ==================================================
+
+                    const updateSQL = `
+
+                        UPDATE customers
+
+                        SET
+                            pending_cancellation_amount = 0.00
+
+                        WHERE
+                            id = ?
+
+                            AND
+                            pending_cancellation_amount > 0
+
+                    `;
+
+
+                    db.query(
+                        updateSQL,
+                        [customerId],
+                        (updateError, updateResult) => {
+
+                            if (updateError) {
+
+                                console.log(
+                                    "❌ UPDATE CANCELLATION CASH ERROR:",
+                                    updateError
+                                );
+
+                                return res.status(500).json({
+                                    success: false,
+                                    message:
+                                        "Failed to settle cancellation cash.",
+                                    error:
+                                        updateError.message
+                                });
+
+                            }
+
+
+                            // ==================================================
+                            // 10. PREVENT DOUBLE SETTLEMENT
+                            // ==================================================
+
+                            if (
+                                updateResult.affectedRows === 0
+                            ) {
+
+                                return res.status(400).json({
+                                    success: false,
+                                    message:
+                                        "Cancellation cash has already been settled."
+                                });
+
+                            }
+
+
+                            // ==================================================
+                            // 11. SUCCESS
+                            // ==================================================
+
+                            console.log(
+                                `✅ ₹${pendingAmount.toFixed(2)} cancellation cash settled for customer ${customerId}`
+                            );
+
+
+                            return res.json({
+
+                                success: true,
+
+                                message:
+                                    "Cancellation cash settled successfully.",
+
+                                customer_id:
+                                    Number(customerId),
+
+                                amount_settled:
+                                    pendingAmount,
+
+                                remaining_amount:
+                                    0,
+
+                                order_id:
+                                    Number(
+                                        currentOrder.order_id
+                                    ),
+
+                                food_total:
+                                    foodTotal
+
+                            });
+
+                        }
                     );
-
-                    return res.json({
-
-                        success: true,
-
-                        message:
-                            "Cancellation cash settled successfully",
-
-                        customer_id:
-                            Number(customerId),
-
-                        amount_settled:
-                            pendingAmount,
-
-                        remaining_amount:
-                            0
-
-                    });
 
                 }
             );

@@ -4698,6 +4698,7 @@ exports.cancelOrder = (
             o.order_status,
             o.total_amount,
             da.id AS assignment_id,
+            da.delivery_boy_id,
             da.status AS delivery_status
 
         FROM orders o
@@ -4752,55 +4753,69 @@ exports.cancelOrder = (
             // DELIVERY ORDER
             // ==================================================
 
-            if (
-                order.order_type === "Delivery"
-            ) {
+            // ==================================================
+// DELIVERY ORDER
+// ==================================================
 
-                // ----------------------------------------------
-                // MUST HAVE ASSIGNMENT
-                // ----------------------------------------------
+if (
+    order.order_type === "Delivery"
+) {
 
-                if (
-                    !order.assignment_id
-                ) {
+    // ----------------------------------------------
+    // DELIVERY STATUS
+    // ----------------------------------------------
 
-                    return res.status(400).json({
-                        success: false,
-                        message:
-                            "Delivery Boy has not accepted this order yet."
-                    });
-
-                }
+    const deliveryStatus =
+        String(
+            order.delivery_status || ""
+        ).trim();
 
 
-                // ----------------------------------------------
-                // CHECK DELIVERY STATUS DIRECTLY
-                // ----------------------------------------------
+    // ----------------------------------------------
+    // NO ASSIGNMENT YET
+    // ----------------------------------------------
+    // Customer can cancel while waiting
+    // for DeliveryBoy assignment.
 
-                const deliveryStatus =
-                    String(
-                        order.delivery_status || ""
-                    ).trim();
+    if (!order.assignment_id) {
 
+        console.log(
+            "🚚 DELIVERY ORDER HAS NO ASSIGNMENT"
+        );
 
-                if (
-                    deliveryStatus !== "Accepted" &&
-                    deliveryStatus !== "PickedUp"
-                ) {
+        console.log(
+            "✅ CUSTOMER CAN CANCEL BEFORE ASSIGNMENT"
+        );
 
-                    return res.status(400).json({
-                        success: false,
-                        message:
-                            "Order cannot be cancelled at this delivery stage.",
-                        delivery_status:
-                            deliveryStatus
-                    });
+    }
 
-                }
+    // ----------------------------------------------
+    // ASSIGNMENT EXISTS
+    // ----------------------------------------------
 
-            }
+    else {
 
+        // Customer can cancel only before
+        // OutForDelivery.
 
+        if (
+            deliveryStatus !== "Assigned" &&
+            deliveryStatus !== "Accepted"
+        ) {
+
+            return res.status(400).json({
+                success: false,
+                message:
+                    "Order cannot be cancelled after delivery has started.",
+                delivery_status:
+                    deliveryStatus
+            });
+
+        }
+
+    }
+
+}
             // ==================================================
             // CANCELLATION AMOUNT
             // ==================================================
@@ -4931,91 +4946,94 @@ exports.cancelOrder = (
                                     // 2. DELIVERY ASSIGNMENT
                                     // ==================================================
 
-                                    if (
-                                        order.order_type === "Delivery"
-                                    ) {
+                                    // ==================================================
+// ==================================================
+// 2. DELIVERY ASSIGNMENT
+// ==================================================
 
-                                        const cancelAssignmentSql = `
-                                            UPDATE delivery_assignments
+if (
+    order.order_type === "Delivery" &&
+    order.assignment_id
+) {
 
-                                            SET
-                                                status = 'Cancelled'
+    const cancelAssignmentSql = `
+        UPDATE delivery_assignments
 
-                                            WHERE id = ?
+        SET
+            status = 'Cancelled'
 
-                                            AND status IN (
-                                                'Accepted',
-                                                'PickedUp'
-                                            )
-                                        `;
+        WHERE id = ?
 
+        AND status IN (
+            'Assigned',
+            'Accepted'
+        )
+    `;
 
-                                        connection.query(
-                                            cancelAssignmentSql,
-                                            [order.assignment_id],
-                                            (
-                                                assignmentError,
-                                                assignmentResult
-                                            ) => {
+    connection.query(
+        cancelAssignmentSql,
+        [order.assignment_id],
+        (
+            assignmentError,
+            assignmentResult
+        ) => {
 
-                                                if (
-                                                    assignmentError
-                                                ) {
+            if (assignmentError) {
 
-                                                    return connection.rollback(
-                                                        () => {
+                return connection.rollback(
+                    () => {
 
-                                                            connection.release();
+                        connection.release();
 
-                                                            return res.status(500).json({
-                                                                success: false,
-                                                                message:
-                                                                    "Failed to cancel delivery assignment",
-                                                                error:
-                                                                    assignmentError.message
-                                                            });
+                        return res.status(500).json({
+                            success: false,
+                            message:
+                                "Failed to cancel delivery assignment",
+                            error:
+                                assignmentError.message
+                        });
 
-                                                        }
-                                                    );
+                    }
+                );
 
-                                                }
+            }
 
+            if (
+                assignmentResult.affectedRows === 0
+            ) {
 
-                                                if (
-                                                    assignmentResult.affectedRows === 0
-                                                ) {
+                return connection.rollback(
+                    () => {
 
-                                                    return connection.rollback(
-                                                        () => {
+                        connection.release();
 
-                                                            connection.release();
+                        return res.status(400).json({
+                            success: false,
+                            message:
+                                "Delivery assignment cannot be cancelled."
+                        });
 
-                                                            return res.status(400).json({
-                                                                success: false,
-                                                                message:
-                                                                    "Delivery assignment cannot be cancelled."
-                                                            });
+                    }
+                );
 
-                                                        }
-                                                    );
+            }
 
-                                                }
+            updateCustomerAmount();
 
+        }
+    );
 
-                                                updateCustomerAmount();
+}
 
-                                            }
-                                        );
+else {
 
-                                    }
+    // No DeliveryBoy assignment exists.
+    // Customer can cancel while waiting
+    // for DeliveryBoy assignment.
 
-                                    else {
+    updateCustomerAmount();
 
-                                        commitCancellation();
-
-                                    }
-
-
+}
                                     // ==================================================
                                     // 3. ADD CANCELLED AMOUNT
                                     // ==================================================
@@ -5151,7 +5169,50 @@ exports.cancelOrder = (
 
                                                 connection.release();
 
+// ==========================================
+// DELIVERY BOY CANCELLATION NOTIFICATION
+// ==========================================
 
+if (
+    order.order_type === "Delivery" &&
+    order.assignment_id &&
+    order.delivery_boy_id
+) {
+
+    sendPushToDeliveryBoy(
+        order.delivery_boy_id,
+        {
+            orderId: order.id,
+
+            title: "❌ Customer Order Cancelled",
+
+            body:
+                `Customer has cancelled Order #${order.id}.`,
+
+            tag:
+                `delivery-cancelled-${order.id}`,
+
+            url:
+                "/staff-dashboard"
+        }
+    )
+    .then((result) => {
+
+        console.log(
+            "📨 DELIVERY CANCELLATION PUSH RESULT =",
+            result
+        );
+
+    })
+    .catch((pushError) => {
+
+        console.error(
+            "❌ DELIVERY CANCELLATION PUSH ERROR =",
+            pushError
+        );
+
+    });
+}
                                                 // ==========================================
                                                 // SUCCESS
                                                 // ==========================================
@@ -5161,7 +5222,7 @@ exports.cancelOrder = (
                                                     success: true,
 
                                                     message:
-                                                        `Order cancelled successfully. ₹${cancellationAmount.toFixed(2)} will be adjusted from your next order.`,
+    `Order cancelled successfully. Your cancelled amount of ₹${cancellationAmount.toFixed(2)} will be given to you in cash by the Delivery Boy when you place your next order of at least ₹500.`,
 
                                                     order_id,
 

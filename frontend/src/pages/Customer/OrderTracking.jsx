@@ -266,7 +266,9 @@ function OrderTracking() {
     CANCEL
 ================================== */}
 {(
-    // Normal order
+    // ==========================================
+    // NORMAL ORDER
+    // ==========================================
     (
         order.order_type !== "Delivery" &&
         order.order_status === "Pending"
@@ -274,12 +276,20 @@ function OrderTracking() {
 
     ||
 
-    // Delivery order
+    // ==========================================
+    // DELIVERY ORDER
+    // ==========================================
     (
         order.order_type === "Delivery" &&
         (
-            order.delivery_status === "Accepted" ||
-            order.delivery_status === "PickedUp"
+            // No DeliveryBoy assigned yet
+            !order.delivery_status ||
+
+            // DeliveryBoy assigned but not started delivery
+            order.delivery_status === "Assigned" ||
+
+            // DeliveryBoy accepted but has not started delivery
+            order.delivery_status === "Accepted"
         )
     )
 ) && (
