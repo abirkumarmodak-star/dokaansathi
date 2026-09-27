@@ -6,7 +6,12 @@ import "./staff.css";
 function Staff() {
 
     const [staff, setStaff] = useState([]);
+const [editingStaffId, setEditingStaffId] = useState(null);
 
+const [editingHours, setEditingHours] = useState({
+    work_start_time: "",
+    work_end_time: ""
+});
   const [form, setForm] = useState({
     name: "",
     phone: "",
@@ -120,7 +125,107 @@ console.log("=====================================");
         });
 
     };
+// ===============================
+// START EDITING DELIVERY BOY HOURS
+// ===============================
 
+const startEditHours = (item) => {
+
+    setEditingStaffId(item.id);
+
+    setEditingHours({
+        work_start_time: item.work_start_time
+            ? String(item.work_start_time).slice(0, 5)
+            : "",
+        work_end_time: item.work_end_time
+            ? String(item.work_end_time).slice(0, 5)
+            : ""
+    });
+};
+
+
+// ===============================
+// SAVE DELIVERY BOY HOURS
+// ===============================
+
+const saveWorkingHours = async (staffId) => {
+
+    if (
+        !editingHours.work_start_time ||
+        !editingHours.work_end_time
+    ) {
+        alert("Please select both working hours");
+        return;
+    }
+
+    if (
+        editingHours.work_start_time >=
+        editingHours.work_end_time
+    ) {
+        alert("Work start time must be earlier than work end time");
+        return;
+    }
+
+    try {
+
+        const token = getToken();
+
+        if (!token) {
+            alert("Owner login required");
+            return;
+        }
+
+        console.log("========== UPDATE WORKING HOURS ==========");
+        console.log("STAFF ID =", staffId);
+        console.log("START =", editingHours.work_start_time);
+        console.log("END =", editingHours.work_end_time);
+
+        const response = await fetch(
+            `https://dokaansathi.onrender.com/api/staff/${staffId}/work-hours`,
+            {
+                method: "PATCH",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                    work_start_time: editingHours.work_start_time,
+                    work_end_time: editingHours.work_end_time
+                })
+            }
+        );
+
+        const result = await response.json();
+
+        console.log("UPDATE WORKING HOURS RESPONSE =", result);
+
+        if (!response.ok) {
+            alert(result.message || "Failed to update working hours");
+            return;
+        }
+
+        alert("✅ Working hours updated successfully");
+
+        setEditingStaffId(null);
+
+        setEditingHours({
+            work_start_time: "",
+            work_end_time: ""
+        });
+
+        // Reload latest staff data
+        loadStaff();
+
+    } catch (error) {
+
+        console.error(
+            "Update Working Hours Error =",
+            error
+        );
+
+        alert("Unable to connect to server");
+    }
+};
 
     // ======================================================
     // ADD STAFF
@@ -374,9 +479,85 @@ console.log("=====================================");
 
                                     <td>{item.role}</td>
 <td>
-    {item.role === "DeliveryBoy"
-        ? `${item.work_start_time || "--"} - ${item.work_end_time || "--"}`
-        : "--"}
+    {item.role === "DeliveryBoy" ? (
+
+        editingStaffId === item.id ? (
+
+            <div className="working-hours-edit">
+
+                <input
+                    type="time"
+                    value={editingHours.work_start_time}
+                    onChange={(e) =>
+                        setEditingHours({
+                            ...editingHours,
+                            work_start_time: e.target.value
+                        })
+                    }
+                />
+
+                <span> - </span>
+
+                <input
+                    type="time"
+                    value={editingHours.work_end_time}
+                    onChange={(e) =>
+                        setEditingHours({
+                            ...editingHours,
+                            work_end_time: e.target.value
+                        })
+                    }
+                />
+
+                <button
+                    onClick={() =>
+                        saveWorkingHours(item.id)
+                    }
+                >
+                    💾 Save
+                </button>
+
+                <button
+                    onClick={() => {
+                        setEditingStaffId(null);
+                        setEditingHours({
+                            work_start_time: "",
+                            work_end_time: ""
+                        });
+                    }}
+                >
+                    ❌ Cancel
+                </button>
+
+            </div>
+
+        ) : (
+
+            <div>
+
+                <span>
+                    {item.work_start_time
+                        ? String(item.work_start_time).slice(0, 5)
+                        : "--"}
+                    {" - "}
+                    {item.work_end_time
+                        ? String(item.work_end_time).slice(0, 5)
+                        : "--"}
+                </span>
+
+                <button
+                    onClick={() => startEditHours(item)}
+                >
+                    ✏️ Edit
+                </button>
+
+            </div>
+
+        )
+
+    ) : (
+        "--"
+    )}
 </td>
                                     <td>{item.status}</td>
 

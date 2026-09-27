@@ -7,7 +7,8 @@ const {
     createStaff,
     staffLogin,
     updateAvailability,
-    resetStaffPassword
+    resetStaffPassword,
+    updateWorkingHours
 } = require("../controllers/staffController");
 
 const authMiddleware = require("../middleware/authMiddleware");
@@ -129,7 +130,16 @@ router.patch(
     updateAvailability
 );
 
+// ========================================
+// OWNER - UPDATE DELIVERY BOY WORKING HOURS
+// ========================================
 
+router.patch(
+    "/:id/work-hours",
+    authMiddleware,
+    requireRole("Owner"),
+    updateWorkingHours
+);
 // ======================================================
 // EXPORT ROUTER
 // ======================================================

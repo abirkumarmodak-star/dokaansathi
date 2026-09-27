@@ -177,7 +177,38 @@ exports.updateOnlineStatus = (
 // RESET STAFF PASSWORD
 // Password must already be hashed
 // ===============================
+// ===============================
+// UPDATE DELIVERY BOY WORKING HOURS
+// Owner changes existing DeliveryBoy hours
+// ===============================
 
+exports.updateWorkingHours = (
+    staffId,
+    workStartTime,
+    workEndTime,
+    callback
+) => {
+
+    const sql = `
+        UPDATE staff
+        SET
+            work_start_time = ?,
+            work_end_time = ?
+        WHERE
+            id = ?
+            AND role = 'DeliveryBoy'
+    `;
+
+    db.query(
+        sql,
+        [
+            workStartTime,
+            workEndTime,
+            staffId
+        ],
+        callback
+    );
+};
 exports.updatePassword = (staffId, hashedPassword, callback) => {
 
     const sql = `

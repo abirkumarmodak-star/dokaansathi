@@ -2464,7 +2464,15 @@ console.log(
                     AND s.online_status = 'Online'
 
                     AND s.on_leave = 0
-
+AND TIME(
+    DATE_ADD(
+        UTC_TIMESTAMP(),
+        INTERVAL 330 MINUTE
+    )
+) BETWEEN
+    s.work_start_time
+AND
+    s.work_end_time
                     AND NOT EXISTS
                     (
 

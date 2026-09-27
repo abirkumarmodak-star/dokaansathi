@@ -8,7 +8,8 @@ const db = require("../config/db");
 // ==========================================
 
 router.post("/subscribe", (req, res) => {
-
+   console.log("🚨 PUSH SUBSCRIBE ROUTE HIT");
+    console.log("🚨 PUSH SUBSCRIBE BODY =", req.body);
     const {
         staff_id,
         subscription

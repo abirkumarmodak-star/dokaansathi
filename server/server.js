@@ -434,87 +434,6 @@ app.get("/api/staff-test", (req, res) => {
 // DELIVERY BOY AUTO OFFLINE CHECK
 // ======================================================
 
-const checkDeliveryBoyOffline = () => {
-
-    const sql = `
-
-        UPDATE staff
-
-        SET online_status = 'Offline'
-
-        WHERE role = 'DeliveryBoy'
-
-        AND status = 'Active'
-
-        AND online_status = 'Online'
-
-        AND last_seen IS NOT NULL
-
-        AND last_seen < DATE_SUB(
-            NOW(),
-            INTERVAL 60 SECOND
-        )
-
-    `;
-
-    db.query(
-        sql,
-        (err, result) => {
-
-            if (err) {
-
-                console.error(
-                    "❌ DELIVERY OFFLINE CHECK ERROR:",
-                    err
-                );
-
-                return;
-
-            }
-
-            if (
-                result.affectedRows > 0
-            ) {
-
-                console.log(
-                    "🔴 DELIVERY BOY AUTO OFFLINE:",
-                    result.affectedRows
-                );
-
-            }
-
-        }
-    );
-
-};
-
-// ======================================================
-// 404 HANDLER
-// ======================================================
-
-app.use(
-    (req, res) => {
-
-        console.log(
-            "❌ 404 ROUTE NOT FOUND:",
-            req.method,
-            req.originalUrl
-        );
-
-        res.status(404).json({
-
-            success: false,
-
-            message: "Route Not Found",
-
-            method: req.method,
-
-            route: req.originalUrl
-
-        });
-
-    }
-);
 
 // ======================================================
 // ERROR HANDLER
@@ -563,7 +482,7 @@ app.listen(
         );
 
         console.log(
-            `🚀 SERVER RUNNING ON PORT ${PORT}`
+           `🚀 SERVER RUNNING ON PORT ${PORT}`
         );
 
         console.log(
@@ -597,6 +516,10 @@ app.listen(
 // BACKGROUND TIMER
 // ======================================================
 
+// ======================================================
+// BACKGROUND TIMER
+// ======================================================
+
 setInterval(
     () => {
 
@@ -604,9 +527,15 @@ setInterval(
             "⏰ Background Timer Running"
         );
 
+        // ----------------------------------------------
+        // CHECK PENDING ORDERS
+        // ----------------------------------------------
+
         checkPendingOrders();
 
-        checkDeliveryBoyOffline();
+        // ----------------------------------------------
+        // CHECK DELIVERY ASSIGNMENT ESCALATION
+        // ----------------------------------------------
 
         checkDeliveryAssignmentEscalation();
 

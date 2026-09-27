@@ -562,7 +562,93 @@ exports.staffLogin = (req, res) => {
 // RESET STAFF PASSWORD
 // TEMPORARY TEST FUNCTION
 // ===============================
+// ===============================
+// UPDATE DELIVERY BOY WORKING HOURS
+// Owner changes existing DeliveryBoy hours
+// ===============================
 
+exports.updateWorkingHours = (req, res) => {
+    const staffId = Number(req.params.id);
+
+    const { work_start_time, work_end_time } = req.body;
+
+    console.log("========== UPDATE WORKING HOURS ==========");
+    console.log("STAFF ID =", staffId);
+    console.log("START TIME =", work_start_time);
+    console.log("END TIME =", work_end_time);
+
+    // Validate staff ID
+    if (!Number.isInteger(staffId) || staffId <= 0) {
+        return res.status(400).json({
+            success: false,
+            message: "Invalid staff ID"
+        });
+    }
+
+    // Validate time fields
+    if (!work_start_time || !work_end_time) {
+        return res.status(400).json({
+            success: false,
+            message: "Work start time and work end time are required"
+        });
+    }
+
+    // Validate HH:MM format
+    const timeRegex = /^\d{2}:\d{2}$/;
+
+    if (
+        !timeRegex.test(work_start_time) ||
+        !timeRegex.test(work_end_time)
+    ) {
+        return res.status(400).json({
+            success: false,
+            message: "Invalid time format. Use HH:MM"
+        });
+    }
+
+    // Start time must be before end time
+    if (work_start_time >= work_end_time) {
+        return res.status(400).json({
+            success: false,
+            message: "Work start time must be earlier than work end time"
+        });
+    }
+
+    Staff.updateWorkingHours(
+        staffId,
+        work_start_time,
+        work_end_time,
+        (err, result) => {
+
+            if (err) {
+                console.error("❌ UPDATE WORKING HOURS ERROR =", err);
+
+                return res.status(500).json({
+                    success: false,
+                    message: "Failed to update working hours"
+                });
+            }
+
+            // ID does not exist OR staff is not DeliveryBoy
+            if (result.affectedRows === 0) {
+                return res.status(404).json({
+                    success: false,
+                    message: "DeliveryBoy not found"
+                });
+            }
+
+            console.log("✅ WORKING HOURS UPDATED");
+
+            return res.status(200).json({
+                success: true,
+                message: "Working hours updated successfully",
+                staffId: staffId,
+                work_start_time: work_start_time,
+                work_end_time: work_end_time
+            });
+        }
+    );
+};
 exports.resetStaffPassword = async (req, res) => {
 
     const { staffId, newPassword } = req.body;

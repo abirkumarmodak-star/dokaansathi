@@ -2,7 +2,7 @@ import { useEffect, useState, useRef } from "react";
 import axios from "axios";
 import "./StaffDashboard.css";
 import { useNavigate } from "react-router-dom";
-import { Html5Qrcode } from "html5-qrcode";
+
 
 // ======================================================
 // BACKEND API
@@ -47,12 +47,9 @@ function StaffDashboard() {
 
     const [error, setError] = useState("");
 
-    const [staff, setStaff] = useState(null);
+   const [staff, setStaff] = useState(null);
 
-    const [showOwnerQrScanner, setShowOwnerQrScanner] =
-        useState(null);
-
-    const navigate = useNavigate();
+const navigate = useNavigate();
 
     // ======================================================
     // NOTIFICATION STATE
@@ -389,145 +386,7 @@ const [managerDeliveryAlert, setManagerDeliveryAlert] =
     // OWNER QR SCANNER
     // ======================================================
 
-    useEffect(() => {
-
-        if (!showOwnerQrScanner) {
-            return;
-        }
-
-        const readerId =
-            `owner-qr-reader-${showOwnerQrScanner}`;
-
-        let scanner = null;
-
-        const startScanner = async () => {
-
-            try {
-
-                scanner =
-                    new Html5Qrcode(
-                        readerId
-                    );
-
-               await scanner.start(
-    {
-        facingMode: "environment"
-    },
-                    {
-                        fps: 10,
-                        qrbox: {
-                            width: 250,
-                            height: 250
-                        }
-                    },
-                    async (decodedText) => {
-
-                        console.log(
-                            "✅ OWNER QR SCANNED =",
-                            decodedText
-                        );
-
-                        alert(
-                            `✅ QR Scanned!\n\n${decodedText}`
-                        );
-
-                        try {
-
-                            await scanner.stop();
-
-                        }
-
-                        catch (stopError) {
-
-                            console.log(
-                                "Scanner stop error:",
-                                stopError
-                            );
-
-                        }
-
-                        try {
-
-                            await scanner.clear();
-
-                        }
-
-                        catch (clearError) {
-
-                            console.log(
-                                "Scanner clear error:",
-                                clearError
-                            );
-
-                        }
-
-                        setShowOwnerQrScanner(
-                            null
-                        );
-
-                    },
-                    () => {
-
-                        // QR না পাওয়া গেলে
-                        // কোনো console message নয়
-
-                    }
-                );
-
-                console.log(
-                    "📷 OWNER QR CAMERA STARTED"
-                );
-
-            }
-
-            catch (error) {
-
-                console.error(
-                    "❌ OWNER QR CAMERA ERROR =",
-                    error
-                );
-
-                alert(
-                    "❌ Camera চালু করা যাচ্ছে না। Camera permission check করুন."
-                );
-
-                setShowOwnerQrScanner(
-                    null
-                );
-
-            }
-
-        };
-
-        const timer =
-            setTimeout(
-                startScanner,
-                300
-            );
-
-        return () => {
-
-            clearTimeout(timer);
-
-            if (scanner) {
-
-                scanner
-                    .stop()
-                    .catch(() => {})
-                    .finally(() => {
-
-                        scanner
-                            .clear()
-                            .catch(() => {});
-
-                    });
-
-            }
-
-        };
-
-    }, [showOwnerQrScanner]);
-
+    
     // ======================================================
     // ENABLE NOTIFICATIONS
     // ======================================================
@@ -791,7 +650,12 @@ const [managerDeliveryAlert, setManagerDeliveryAlert] =
                 console.log(
                     "🔔 PUSH SUBSCRIPTION CREATED"
                 );
-
+console.log("🚨 PUSH STAFF DEBUG =", {
+    staff,
+    staffId: staff?.id,
+    staffName: staff?.name,
+    staffRole: staff?.role
+});
                 // ======================================
                 // CHECK STAFF
                 // ======================================
@@ -3350,48 +3214,67 @@ const logout = () => {
 
                                             <div>
 
-                                                <button
-                                                    type="button"
-                                                    onClick={() =>
-                                                        setShowOwnerQrScanner(
-                                                            order.assignment_id
-                                                        )
-                                                    }
-                                                >
+    <p
+        style={{
+            fontWeight: "bold",
+            marginBottom: "8px"
+        }}
+    >
+        🏪 Shop Owner:
+        JANA FOOD HUB
+    </p>
 
-                                                    📱 Scan Shop Owner QR
+    <p
+        style={{
+            marginBottom: "8px"
+        }}
+    >
+        📱 UPI ID:
+        MAB.037135003970219@AXISBANK
+    </p>
 
-                                                </button>
+    <button
+        type="button"
+        onClick={() => {
 
+    const upiId = "MAB.037135003970219@AXISBANK";
+    const shopName = "JANA FOOD HUB";
 
-                                                {
-                                                    showOwnerQrScanner ===
-                                                        order.assignment_id &&
+    const amount = Number(
+        order.total_amount || 0
+    ).toFixed(2);
 
-                                                    (
+    const upiLink =
+        `upi://pay?pa=${upiId}` +
+        `&pn=${encodeURIComponent(shopName)}` +
+        `&am=${amount}` +
+        `&cu=INR`;
 
-                                                        <div
-                                                            id={
-                                                                `owner-qr-reader-${order.assignment_id}`
-                                                            }
+    console.log("🏪 SHOP OWNER PAYMENT CLICKED");
+    console.log("💰 Amount:", amount);
+    console.log("📱 UPI Link:", upiLink);
 
-                                                            style={{
-                                                                marginTop:
-                                                                    "15px",
+    window.location.assign(upiLink);
+}}
+        style={{
+            width: "100%",
+            padding: "12px",
+            background: "#28a745",
+            color: "white",
+            border: "none",
+            borderRadius: "8px",
+            fontSize: "16px",
+            fontWeight: "bold",
+            cursor: "pointer"
+        }}
+    >
+        📱 Pay Shop Owner ₹
+        {Number(
+            order.total_amount || 0
+        ).toFixed(2)}
+    </button>
 
-                                                                width:
-                                                                    "100%",
-
-                                                                maxWidth:
-                                                                    "400px"
-                                                            }}
-                                                        />
-
-                                                    )
-                                                }
-
-                                            </div>
-
+</div>
                                         </div>
 
                                     )
@@ -4100,7 +3983,7 @@ const logout = () => {
 
                     const response =
                         await fetch(
-                            `${API_URL}/delivery-assignments/settle-cash/${order.assignment_id}`,
+                            `${API_URL}/delivery-assignments/settle-cashback/${order.assignment_id}`,
                             {
                                 method: "PATCH",
 
