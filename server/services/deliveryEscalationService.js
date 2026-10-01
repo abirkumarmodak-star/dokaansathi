@@ -83,11 +83,10 @@ const processReminders = async () => {
             'Completed',
             'Cancelled'
         )
-
-        AND aa.assigned_at <= DATE_SUB(
-            UTC_TIMESTAMP(),
-            INTERVAL 10 MINUTE
-        )
+AND aa.assigned_at <= DATE_SUB(
+    UTC_TIMESTAMP(),
+    INTERVAL 5 MINUTE
+)
 
         AND NOT EXISTS (
             SELECT 1
@@ -278,38 +277,7 @@ const processReminders = async () => {
             // RESET FOR RETRY
             // ==================================================
 
-            if (
-                !pushResult ||
-                !pushResult.success
-            ) {
-
-                await queryDB(
-
-                    `
-                        UPDATE delivery_assignment_attempts
-
-                        SET
-                            status = 'Assigned',
-                            reminded_at = NULL
-
-                        WHERE id = ?
-
-                        AND status = 'Reminded'
-                    `,
-
-                    [
-                        assignment.attempt_id
-                    ]
-
-                );
-
-
-                console.log(
-                    "🔄 REMINDER RESET FOR RETRY"
-                );
-
-            }
-
+            
         }
         catch (pushError) {
 
@@ -405,10 +373,10 @@ const processEscalations = async () => {
             'Cancelled'
         )
 
-        AND aa.reminded_at <= DATE_SUB(
-            UTC_TIMESTAMP(),
-            INTERVAL 10 MINUTE
-        )
+ AND aa.reminded_at <= DATE_SUB(
+    UTC_TIMESTAMP(),
+    INTERVAL 5 MINUTE
+)
 
         AND NOT EXISTS (
             SELECT 1
@@ -532,14 +500,7 @@ const processEscalations = async () => {
                         )
                     )
 
-                    AND NOT EXISTS (
-                        SELECT 1
-                        FROM delivery_assignment_attempts aa2
-
-                        WHERE aa2.order_id = ?
-
-                        AND aa2.delivery_boy_id = s.id
-                    )
+                  
 
                     ORDER BY s.id ASC
 
@@ -617,7 +578,7 @@ const processEscalations = async () => {
 
                     AND reminded_at <= DATE_SUB(
                         UTC_TIMESTAMP(),
-                        INTERVAL 10 MINUTE
+                        INTERVAL 5 MINUTE
                     )
                 `,
 

@@ -2257,6 +2257,13 @@ else if (
     cashbackAmount = 23;
 
 }
+else if (
+    foodTotal >= 50
+) {
+
+    cashbackAmount = 9;
+
+}
 else {
 
     cashbackAmount = 0;
