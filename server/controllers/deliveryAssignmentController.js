@@ -1,6 +1,103 @@
 const db = require("../config/db");
 
+// ======================================================
+// CREATE DELIVERY ASSIGNMENT ATTEMPT
+// ======================================================
 
+const createDeliveryAssignmentAttempt = (
+    orderId,
+    deliveryBoyId,
+    callback
+) => {
+
+    console.log("📝 CREATING DELIVERY ASSIGNMENT ATTEMPT");
+
+    const attemptSQL = `
+        INSERT INTO delivery_assignment_attempts
+        (
+            order_id,
+            delivery_boy_id,
+            attempt_no,
+            assigned_at,
+            status
+        )
+        VALUES
+        (
+            ?,
+            ?,
+            1,
+            NOW(),
+            'Assigned'
+        )
+    `;
+
+    db.query(
+        attemptSQL,
+        [
+            orderId,
+            deliveryBoyId
+        ],
+        (err, result) => {
+
+            if (err) {
+
+                console.error(
+                    "❌ CREATE DELIVERY ATTEMPT ERROR:",
+                    err
+                );
+
+                return callback(
+                    err,
+                    null
+                );
+            }
+
+            console.log(
+                "✅ DELIVERY ATTEMPT CREATED"
+            );
+
+            console.log(
+                "🆔 ATTEMPT ID =",
+                result.insertId
+            );
+
+            console.log(
+                "🔢 ATTEMPT NO = 1"
+            );
+
+            console.log(
+                "📦 ORDER ID =",
+                orderId
+            );
+
+            console.log(
+                "🚚 DELIVERY BOY ID =",
+                deliveryBoyId
+            );
+
+            return callback(
+                null,
+                {
+                    attemptId:
+                        result.insertId,
+
+                    orderId:
+                        orderId,
+
+                    deliveryBoyId:
+                        deliveryBoyId,
+
+                    attemptNo:
+                        1,
+
+                    status:
+                        "Assigned"
+                }
+            );
+
+        }
+    );
+};
 // ======================================================
 // AUTO ASSIGN WAITING DELIVERY
 // ======================================================
@@ -242,34 +339,70 @@ AND s.on_leave = 0
                             );
 
                             console.log(
-                                "Delivery Boy ID =",
-                                deliveryBoy.id
-                            );
+    "🚚 Delivery Boy ID =",
+    deliveryBoy.id
+);
 
 
-                            return callback(
-                                null,
-                                {
-                                    assignmentId:
-                                        insertResult.insertId,
+// ==================================================
+// CREATE FIRST DELIVERY ASSIGNMENT ATTEMPT
+// ==================================================
 
-                                    orderId:
-                                        order.id,
+createDeliveryAssignmentAttempt(
+    order.id,
+    deliveryBoy.id,
+    (attemptErr, attempt) => {
 
-                                    deliveryBoyId:
-                                        deliveryBoy.id,
+        if (attemptErr) {
 
-                                    deliveryBoyName:
-                                        deliveryBoy.name,
+            console.error(
+                "❌ ASSIGNMENT CREATED BUT ATTEMPT CREATION FAILED:",
+                attemptErr
+            );
 
-                                    deliveryBoyPhone:
-                                        deliveryBoy.phone,
+            return callback(
+                attemptErr,
+                null
+            );
+        }
 
-                                    status:
-                                        "Assigned"
-                                }
-                            );
 
+        console.log(
+            "✅ ASSIGNMENT + ATTEMPT CREATED"
+        );
+
+
+        return callback(
+            null,
+            {
+                assignmentId:
+                    insertResult.insertId,
+
+                attemptId:
+                    attempt.attemptId,
+
+                orderId:
+                    order.id,
+
+                deliveryBoyId:
+                    deliveryBoy.id,
+
+                deliveryBoyName:
+                    deliveryBoy.name,
+
+                deliveryBoyPhone:
+                    deliveryBoy.phone,
+
+                attemptNo:
+                    1,
+
+                status:
+                    "Assigned"
+            }
+        );
+
+    }
+);
                         }
                     );
 
@@ -698,33 +831,80 @@ exports.assignDeliveryBoy = (req, res) => {
                                     );
 
 
-                                    return res.status(201).json({
+                                    // ==================================================
+// CREATE FIRST DELIVERY ASSIGNMENT ATTEMPT
+// ==================================================
 
-                                        success: true,
+createDeliveryAssignmentAttempt(
+    order_id,
+    deliveryBoy.id,
+    (attemptErr, attempt) => {
 
-                                        message:
-                                            "Delivery Boy Assigned Successfully",
+        if (attemptErr) {
 
-                                        assignmentId:
-                                            insertResult.insertId,
+            console.error(
+                "❌ ASSIGNMENT CREATED BUT ATTEMPT CREATION FAILED:",
+                attemptErr
+            );
 
-                                        orderId:
-                                            order_id,
+            return res.status(500).json({
 
-                                        deliveryBoyId:
-                                            deliveryBoy.id,
+                success: false,
 
-                                        deliveryBoyName:
-                                            deliveryBoy.name,
+                message:
+                    "Delivery assigned but initial attempt creation failed",
 
-                                        deliveryBoyPhone:
-                                            deliveryBoy.phone,
+                assignmentId:
+                    insertResult.insertId,
 
-                                        status:
-                                            "Assigned"
+                error:
+                    attemptErr.sqlMessage ||
+                    attemptErr.message
 
-                                    });
+            });
+        }
 
+
+        console.log(
+            "✅ ASSIGNMENT + INITIAL ATTEMPT CREATED"
+        );
+
+
+        return res.status(201).json({
+
+            success: true,
+
+            message:
+                "Delivery Boy Assigned Successfully",
+
+            assignmentId:
+                insertResult.insertId,
+
+            attemptId:
+                attempt.attemptId,
+
+            orderId:
+                order_id,
+
+            deliveryBoyId:
+                deliveryBoy.id,
+
+            deliveryBoyName:
+                deliveryBoy.name,
+
+            deliveryBoyPhone:
+                deliveryBoy.phone,
+
+            attemptNo:
+                1,
+
+            status:
+                "Assigned"
+
+        });
+
+    }
+);
                                 }
                             );
 

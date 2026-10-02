@@ -286,43 +286,19 @@ AND aa.assigned_at <= DATE_SUB(
                 pushError
             );
 
+try{}
+            catch (pushError) {
 
-            try {
+    console.error(
+        "❌ REMINDER PUSH ERROR:",
+        pushError
+    );
 
-                await queryDB(
-
-                    `
-                        UPDATE delivery_assignment_attempts
-
-                        SET
-                            status = 'Assigned',
-                            reminded_at = NULL
-
-                        WHERE id = ?
-
-                        AND status = 'Reminded'
-                    `,
-
-                    [
-                        assignment.attempt_id
-                    ]
-
-                );
-
-                console.log(
-                    "🔄 REMINDER RESET AFTER PUSH ERROR"
-                );
-
-            }
-            catch (resetError) {
-
-                console.error(
-                    "❌ REMINDER RESET ERROR:",
-                    resetError
-                );
-
-            }
-
+    console.log(
+        "ℹ️ REMINDER REMAINS 'Reminded' — escalation timer continues"
+    );
+}
+        
         }
 
     }
