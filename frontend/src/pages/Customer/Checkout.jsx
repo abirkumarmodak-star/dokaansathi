@@ -177,7 +177,7 @@ else if (foodTotal >= 200) {
 else if (foodTotal >= 50) {
 
     cashbackCategory =
-        "🎁 You can get Super Cashback ₹7 now.";
+        "🎁 You can get Super Cashback  now.";
 
 }
 
