@@ -11,14 +11,16 @@ const router = express.Router();
 const {
 
     getMenu,
-
+getCombos,
+ createCombo,
     createMenu,
 
     updateMenu,
 
     deleteMenu,
 
-    toggleMenuStatus
+    toggleMenuStatus,
+    makeAllMenuUnavailable
 
 } = require("../controllers/menuController");
 
@@ -41,10 +43,23 @@ router.get(
     getMenu
 
 );
+// Get All Combos
+// Customer + Owner + Staff
 
+router.get(
+    "/combos",
+    getCombos
+);
 // Create Menu Item
 // Owner Only
+// Create Combo
+// Owner Only
 
+router.post(
+    "/combos",
+    authMiddleware,
+    createCombo
+);
 router.post(
 
     "/",
@@ -83,7 +98,14 @@ router.delete(
 
 // Toggle Available / Unavailable
 // Owner Only
+// Make All Menu Items Unavailable
+// Owner Only
 
+router.patch(
+    "/make-all-unavailable",
+    authMiddleware,
+    makeAllMenuUnavailable
+);
 router.patch(
 
     "/toggle/:id",

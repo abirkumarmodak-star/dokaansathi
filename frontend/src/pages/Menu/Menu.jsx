@@ -391,21 +391,36 @@ alert(token);
 
             <div className="menu-header">
 
-                <h1>🍽 Menu Management</h1>
+    <h1>🍽 Menu Management</h1>
 
-                <button
+    <div>
 
-                    className="add-food-btn"
+        <button
+            className="add-food-btn"
+            onClick={handleAddFood}
+        >
+            + Add Food
+        </button>
 
-                    onClick={handleAddFood}
+        <button
+            onClick={handleMakeAllUnavailable}
+            style={{
+                marginLeft: "10px",
+                backgroundColor: "#dc2626",
+                color: "white",
+                border: "none",
+                padding: "10px 15px",
+                borderRadius: "6px",
+                cursor: "pointer",
+                fontWeight: "600"
+            }}
+        >
+            🔴 Make All Unavailable
+        </button>
 
-                >
+    </div>
 
-                    + Add Food
-
-                </button>
-
-            </div>
+</div>
 
             <SearchBar
 
@@ -456,7 +471,57 @@ alert(token);
     );
 
 }
+// ==========================
+// MAKE ALL MENU ITEMS UNAVAILABLE
+// ==========================
 
+const handleMakeAllUnavailable = async () => {
+
+    const confirmAction = window.confirm(
+        "Are you sure you want to make ALL menu items unavailable?"
+    );
+
+    if (!confirmAction) return;
+
+    try {
+
+        const token = localStorage.getItem("token");
+
+        const response = await fetch(
+            "https://dokaansathi.onrender.com/api/menu/make-all-unavailable",
+            {
+                method: "PATCH",
+
+                headers: {
+                    Authorization: `Bearer ${token}`
+                }
+            }
+        );
+
+        const data = await response.json();
+
+        if (!response.ok) {
+
+            alert(data.message || "Failed to update menu");
+
+            return;
+        }
+
+        alert(data.message);
+
+        // Refresh menu from database
+        fetchMenu();
+
+    }
+    catch (err) {
+
+        console.log(err);
+
+        alert("Server Error");
+
+    }
+
+};
 export default Menu;
 
 
