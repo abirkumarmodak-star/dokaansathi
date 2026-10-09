@@ -13,6 +13,8 @@ const {
     getMenu,
 getCombos,
  createCombo,
+ updateCombo,
+  deleteCombo,
     createMenu,
 
     updateMenu,
@@ -59,6 +61,16 @@ router.post(
     "/combos",
     authMiddleware,
     createCombo
+);
+router.put(
+    "/combos/:id",
+    authMiddleware,
+    updateCombo
+);
+router.delete(
+    "/combos/:id",
+    authMiddleware,
+    deleteCombo
 );
 router.post(
 

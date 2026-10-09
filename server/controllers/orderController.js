@@ -2247,14 +2247,14 @@ else if (
     foodTotal >= 250
 ) {
 
-    cashbackAmount = 29;
+    cashbackAmount = 30;
 
 }
 else if (
     foodTotal >= 200
 ) {
 
-    cashbackAmount = 23;
+    cashbackAmount = 30;
 
 }
 else if (

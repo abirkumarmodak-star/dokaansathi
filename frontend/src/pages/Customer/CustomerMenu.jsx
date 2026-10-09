@@ -12,7 +12,7 @@ const CustomerMenu = () => {
     // ======================================================
 
     const [menu, setMenu] = useState([]);
-
+const [combos, setCombos] = useState([]);
     // ======================================================
     // CART
     // ======================================================
@@ -609,7 +609,7 @@ const getFoodInfo = (item) => {
         }
 
         fetchMenu();
-
+fetchCombos();
         const savedCart =
             JSON.parse(
                 localStorage.getItem("cart")
@@ -712,7 +712,27 @@ const fetchMenu = async () => {
     }
 
 };
+const fetchCombos = async () => {
+    try {
+        const response = await fetch(
+            "https://dokaansathi.onrender.com/api/menu/combos"
+        );
 
+        if (!response.ok) {
+            throw new Error("Failed to fetch combos");
+        }
+
+        const data = await response.json();
+
+        setCombos(
+            (data.combos || []).filter(
+                (combo) => Number(combo.available) === 1
+            )
+        );
+    } catch (err) {
+        console.log("CUSTOMER COMBO FETCH ERROR:", err);
+    }
+};
 
 // ======================================================
 // ADD TO CART
@@ -961,6 +981,45 @@ const addToCart = (
     );
 
 };
+const addComboToCart = (combo) => {
+    const existingCombo = cart.find(
+        (item) =>
+            item.itemType === "combo" &&
+            Number(item.comboId) === Number(combo.id)
+    );
+
+    let updatedCart;
+
+    if (existingCombo) {
+        updatedCart = cart.map((item) =>
+            item.itemType === "combo" &&
+            Number(item.comboId) === Number(combo.id)
+                ? {
+                      ...item,
+                      quantity: item.quantity + 1
+                  }
+                : item
+        );
+    } else {
+        updatedCart = [
+            ...cart,
+            {
+                itemType: "combo",
+                comboId: combo.id,
+                name: `${combo.item1_name} + ${combo.item2_name}`,
+                price: Number(combo.combo_price),
+                quantity: 1
+            }
+        ];
+    }
+
+    setCart(updatedCart);
+    localStorage.setItem("cart", JSON.stringify(updatedCart));
+
+    alert(
+        `${combo.item1_name} + ${combo.item2_name} Combo added to cart`
+    );
+};
 // ======================================================
 // OPEN CART
 // ======================================================
@@ -1189,7 +1248,78 @@ return (
                 </button>
 
             ))}
+{/* COMBO SECTION */}
+{combos.length > 0 && (
+    <div style={{ marginBottom: "30px" }}>
+        <h2 style={{ marginBottom: "15px" }}>
+            🍱 Combo Offers
+        </h2>
 
+        <div
+            style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))",
+                gap: "15px"
+            }}
+        >
+            {combos.map((combo) => (
+                <div
+                    key={combo.id}
+                    style={{
+                        border: "2px solid #f59e0b",
+                        borderRadius: "12px",
+                        padding: "15px",
+                        background: "#fffaf0"
+                    }}
+                >
+                    <h3>
+                        🍱 {combo.item1_name} + {combo.item2_name}
+                    </h3>
+
+                    {Number(combo.is_preferred) === 1 && (
+                        <div style={{ marginBottom: "8px" }}>
+                            ⭐ Recommended
+                        </div>
+                    )}
+
+                    <p>
+                        Combo Price: ₹{combo.combo_price}
+                    </p>
+
+ <div
+    style={{
+        display: "flex",
+        gap: "8px",
+        flexWrap: "wrap"
+    }}
+>
+    <button
+        onClick={() => addComboToCart(combo)}
+        style={{
+            padding: "10px 14px",
+            cursor: "pointer",
+            fontWeight: "bold"
+        }}
+    >
+        ➕ Add to Cart
+    </button>
+
+    <button
+        onClick={openCart}
+        style={{
+            padding: "10px 14px",
+            cursor: "pointer",
+            fontWeight: "bold"
+        }}
+    >
+        🛒 View Cart
+    </button>
+</div>
+                </div>
+            ))}
+        </div>
+    </div>
+)}
         </div>
                 {/* ==================================================
             MENU GRID

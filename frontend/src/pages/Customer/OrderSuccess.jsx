@@ -56,7 +56,9 @@ function OrderSuccess() {
 
     <h3>
 
-        💰 Now you are able to get ₹{cashbackAmount} cashback!
+        💰 Now you are able to get ₹{cashbackAmount} cashback+discount!
+
+Total benefit=₹{cashbackAmount}
 
     </h3>
 

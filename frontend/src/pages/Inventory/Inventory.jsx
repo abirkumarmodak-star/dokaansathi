@@ -79,7 +79,17 @@ const loadInventory = async () => {
         return matchSearch && matchCategory;
 
     });
+// ==========================
+// LOW STOCK COMBO ALERT
+// ==========================
 
+const lowStockItems = inventory.filter((item) => {
+
+    const remaining = Number(item.remaining || 0);
+
+    return remaining > 0 && remaining < 7;
+
+});
     // ==========================
     // UI
     // ==========================
@@ -100,7 +110,44 @@ const loadInventory = async () => {
                 categoryFilter={categoryFilter}
                 setCategoryFilter={setCategoryFilter}
             />
+{/* ==========================
+    LOW STOCK COMBO ALERT
+========================== */}
 
+{lowStockItems.length > 0 && (
+
+    <div
+        style={{
+            backgroundColor: "#fff3cd",
+            border: "1px solid #f0c36d",
+            color: "#856404",
+            padding: "14px 18px",
+            borderRadius: "8px",
+            margin: "15px 0",
+            fontWeight: "600"
+        }}
+    >
+
+        🟡 এখন আপনি আপনার প্রয়োজনীয় item-এর actual price-এর
+        combo offer চালু করতে পারেন, কারণ stock কমে আসছে।
+
+        <div style={{ marginTop: "8px" }}>
+
+            {lowStockItems.map((item) => (
+
+                <div key={item.id}>
+
+                    • {item.name} — Remaining: {item.remaining}
+
+                </div>
+
+            ))}
+
+        </div>
+
+    </div>
+
+)}
             <InventoryTable
                 inventory={filteredInventory}
                 onUpdate={setSelectedItem}

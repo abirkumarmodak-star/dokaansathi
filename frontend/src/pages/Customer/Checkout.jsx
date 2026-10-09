@@ -66,22 +66,43 @@ const [deliveryLandmarkName, setDeliveryLandmarkName] = useState("");
     // REMOVE ITEM
     // ======================================================
 
-    const removeItem = (id, plateType) => {
-        const updatedCart = cartItems.filter(
-            (item) =>
-                !(
-                    Number(item.id) === Number(id) &&
-                    item.plateType === plateType
-                )
+   const removeItem = (itemToRemove) => {
+
+    const updatedCart = cartItems.filter((item) => {
+
+        // ==============================
+        // COMBO DELETE
+        // ==============================
+        if (itemToRemove.itemType === "combo") {
+
+            return !(
+                item.itemType === "combo" &&
+                Number(item.comboId) ===
+                    Number(itemToRemove.comboId)
+            );
+
+        }
+
+        // ==============================
+        // NORMAL FOOD DELETE
+        // ==============================
+        return !(
+            item.itemType !== "combo" &&
+            Number(item.id) ===
+                Number(itemToRemove.id) &&
+            item.plateType ===
+                itemToRemove.plateType
         );
 
-        localStorage.setItem(
-            "cart",
-            JSON.stringify(updatedCart)
-        );
+    });
 
-        setCartItems(updatedCart);
-    };
+    localStorage.setItem(
+        "cart",
+        JSON.stringify(updatedCart)
+    );
+
+    setCartItems(updatedCart);
+};
 
     // ======================================================
     // FOOD TOTAL
@@ -123,55 +144,55 @@ let nextCashbackTarget = null;
 if (foodTotal >= 2000) {
 
     cashbackCategory =
-        "💎 You can get Silver + Gold + Diamond Cashback now.";
+        "💎 You can get Silver + Gold + Diamond Cashback with silver+gold+diamond discount now.";
 
 }
 else if (foodTotal >= 1500) {
 
     cashbackCategory =
-        "🥇💎 You can get Gold + Diamond Cashback now.";
+        "🥇💎 You can get Gold + Diamond Cashback with gold+diamond discount now.";
 
 }
 else if (foodTotal >= 1100) {
 
     cashbackCategory =
-        "🥈💎 You can get Silver + Diamond Cashback now.";
+        "🥈💎 You can get Silver + Diamond Cashback with silver+diamond discount now.";
 
 }
 else if (foodTotal >= 900) {
 
     cashbackCategory =
-        "🥈🥇 You can get Silver + Gold Cashback now.";
+        "🥈🥇 You can get Silver + Gold Cashback with silver+gold discount now.";
 
 }
 else if (foodTotal >= 700) {
 
     cashbackCategory =
-        "💎 You can get Diamond Cashback now.";
+        "💎 You can get Diamond Cashback with diamond discount now.";
 
 }
 else if (foodTotal >= 500) {
 
     cashbackCategory =
-        "🥇 You can get Gold Cashback now.";
+        "🥇 You can get Gold Cashback with gold discount now.";
 
 }
 else if (foodTotal >= 300) {
 
     cashbackCategory =
-        "🥈 You can get Silver Cashback now.";
+        "🥈 You can get Silver Cashback with silver discount now.";
 
 }
 else if (foodTotal >= 250) {
 
     cashbackCategory =
-        "🎁 You can get Super duper Cashback now.";
+        "🎁 You can get Super duper Cashback with super discount now.";
 
 }
 else if (foodTotal >= 200) {
 
     cashbackCategory =
-        "🎁 You can get Super duper Cashback now.";
+        "🎁 You can get Super duper Cashback with super discount now.";
 
 }
 else if (foodTotal >= 50) {
@@ -200,7 +221,7 @@ else if (foodTotal < 200) {
     nextCashbackTarget = 200;
 
     nextCashbackCategory =
-        "Super duper Cashback";
+        "Super duper Cashback+super discount";
 
 }
 else if (foodTotal < 300) {
@@ -208,7 +229,7 @@ else if (foodTotal < 300) {
     nextCashbackTarget = 300;
 
     nextCashbackCategory =
-        "Silver Cashback";
+        "Silver Cashback+silver discount";
 
 }
 else if (foodTotal < 500) {
@@ -216,7 +237,7 @@ else if (foodTotal < 500) {
     nextCashbackTarget = 500;
 
     nextCashbackCategory =
-        "Gold Cashback";
+        "Gold Cashback+Gold discount";
 
 }
 else if (foodTotal < 700) {
@@ -224,7 +245,7 @@ else if (foodTotal < 700) {
     nextCashbackTarget = 700;
 
     nextCashbackCategory =
-        "Diamond Cashback";
+        "Diamond Cashback+Diamond discount";
 
 }
 else if (foodTotal < 900) {
@@ -232,7 +253,7 @@ else if (foodTotal < 900) {
     nextCashbackTarget = 900;
 
     nextCashbackCategory =
-        "Silver + Gold Cashback";
+        "Silver + Gold Cashback+Silver+Gold discount";
 
 }
 else if (foodTotal < 1100) {
@@ -240,7 +261,7 @@ else if (foodTotal < 1100) {
     nextCashbackTarget = 1100;
 
     nextCashbackCategory =
-        "Silver + Diamond Cashback";
+        "Silver + Diamond Cashback+Silver+Diamond discount";
 
 }
 else if (foodTotal < 1500) {
@@ -248,7 +269,7 @@ else if (foodTotal < 1500) {
     nextCashbackTarget = 1500;
 
     nextCashbackCategory =
-        "Gold + Diamond Cashback";
+        "Gold + Diamond Cashback+Gold+Diamond discount";
 
 }
 else if (foodTotal < 2000) {
@@ -256,7 +277,7 @@ else if (foodTotal < 2000) {
     nextCashbackTarget = 2000;
 
     nextCashbackCategory =
-        "Silver + Gold + Diamond Cashback";
+        "Silver + Gold + Diamond Cashback+Silver+Gold+Diamond discount";
 
 }
 
@@ -1142,12 +1163,9 @@ localStorage.setItem(
 
                                 <button
                                     type="button"
-                                    onClick={() =>
-                                        removeItem(
-                                            item.id,
-                                            item.plateType
-                                        )
-                                    }
+                                   onClick={() =>
+    removeItem(item)
+}
                                     style={{
                                         padding:
                                             "8px 12px",

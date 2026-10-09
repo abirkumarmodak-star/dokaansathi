@@ -617,7 +617,155 @@ exports.createCombo = (req, res) => {
 // ======================================
 // MAKE ALL MENU ITEMS UNAVAILABLE
 // ======================================
+exports.updateCombo = (req, res) => {
+    console.log("UPDATE COMBO API RUNNING");
 
+    const comboId = req.params.id;
+
+    const {
+        item1_id,
+        item2_id,
+        combo_price,
+        is_preferred
+    } = req.body;
+
+    if (!item1_id || !item2_id) {
+        return res.status(400).json({
+            success: false,
+            message: "Both combo items are required"
+        });
+    }
+
+    if (Number(item1_id) === Number(item2_id)) {
+        return res.status(400).json({
+            success: false,
+            message: "Item 1 and Item 2 cannot be the same"
+        });
+    }
+
+    if (!combo_price || Number(combo_price) <= 0) {
+        return res.status(400).json({
+            success: false,
+            message: "Please enter a valid combo price"
+        });
+    }
+
+    const checkSql = `
+        SELECT id, name
+        FROM menu
+        WHERE id IN (?, ?)
+    `;
+
+    db.query(
+        checkSql,
+        [item1_id, item2_id],
+        (err, results) => {
+
+            if (err) {
+                console.log("COMBO ITEM CHECK ERROR:", err);
+
+                return res.status(500).json({
+                    success: false,
+                    message: "Database Error"
+                });
+            }
+
+            if (results.length !== 2) {
+                return res.status(400).json({
+                    success: false,
+                    message: "One or both menu items not found"
+                });
+            }
+
+            const updateSql = `
+                UPDATE combos
+                SET
+                    item1_id = ?,
+                    item2_id = ?,
+                    combo_price = ?,
+                    is_preferred = ?
+                WHERE id = ?
+            `;
+
+            db.query(
+                updateSql,
+                [
+                    item1_id,
+                    item2_id,
+                    combo_price,
+                    is_preferred ? 1 : 0,
+                    comboId
+                ],
+                (err, result) => {
+
+                    if (err) {
+                        console.log("UPDATE COMBO DATABASE ERROR:", err);
+
+                        return res.status(500).json({
+                            success: false,
+                            message: "Database Error"
+                        });
+                    }
+
+                    if (result.affectedRows === 0) {
+                        return res.status(404).json({
+                            success: false,
+                            message: "Combo not found"
+                        });
+                    }
+
+                    return res.status(200).json({
+                        success: true,
+                        message: "Combo updated successfully"
+                    });
+
+                }
+            );
+
+        }
+    );
+};
+exports.deleteCombo = (req, res) => {
+    console.log("DELETE COMBO API RUNNING");
+
+    const comboId = req.params.id;
+
+    if (!comboId) {
+        return res.status(400).json({
+            success: false,
+            message: "Combo ID is required"
+        });
+    }
+
+    const sql = `
+        DELETE FROM combos
+        WHERE id = ?
+    `;
+
+    db.query(sql, [comboId], (err, result) => {
+
+        if (err) {
+            console.log("DELETE COMBO DATABASE ERROR:", err);
+
+            return res.status(500).json({
+                success: false,
+                message: "Database Error"
+            });
+        }
+
+        if (result.affectedRows === 0) {
+            return res.status(404).json({
+                success: false,
+                message: "Combo not found"
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: "Combo deleted successfully"
+        });
+    });
+};
 exports.makeAllMenuUnavailable = (req, res) => {
 
     console.log("MAKE ALL MENU ITEMS UNAVAILABLE API RUNNING");
