@@ -1289,56 +1289,49 @@ actualPaymentMethod,
         // 15. NORMALIZE ITEMS
         // ==================================================
 
-        const normalizedItems =
-            items.map(
-                (item) => {
+  
+const normalizedItems = items.flatMap((item) => {
+    const quantity = Number(item.quantity ?? item.qty ?? 1);
 
-                    const menuId =
-                        Number(
-                            item.menu_id ??
-                            item.menuId ??
-                            item.id
-                        );
+    // Combo payload: one item priced at ₹220, without menu_id
+    const itemName = String(item.name ?? item.item_name ?? "").toLowerCase();
 
-
-                    const quantity =
-                        Number(
-                            item.quantity ??
-                            item.qty ??
-                            1
-                        );
-
-
-                    const price =
-                        Number(
-                            item.price ??
-                            item.unit_price ??
-                            item.unitPrice ??
-                            0
-                        );
-
-
-                    return {
-
-                        menuId:
-                            menuId,
-
-                        quantity:
-                            quantity,
-
-                        price:
-                            price
-
-                    };
-
-                }
-            );
-
-
-        console.log(
-            "🍽️ NORMALIZED ITEMS =",
-            normalizedItems
+    const isCombo =
+        item.comboId !== undefined ||
+        item.combo_id !== undefined ||
+        (
+            itemName.includes("aloo paratha") &&
+            itemName.includes("chicken chilli")
+        ) ||
+        (
+            !Number.isInteger(Number(item.menu_id ?? item.menuId ?? item.id)) &&
+            Number(item.price ?? item.unit_price ?? item.unitPrice) === 220
         );
+
+    if (isCombo) {
+        return [
+            {
+                menuId: 4,
+                quantity,
+                price: 40
+            },
+            {
+                menuId: 37,
+                quantity,
+                price: 180
+            }
+        ];
+    }
+
+    return [{
+        menuId: Number(item.menu_id ?? item.menuId ?? item.id),
+        quantity,
+        price: Number(item.price ?? item.unit_price ?? item.unitPrice ?? 0)
+    }];
+});
+
+console.log("🍽️ NORMALIZED ITEMS =", normalizedItems);
+
 
 
         // ==================================================

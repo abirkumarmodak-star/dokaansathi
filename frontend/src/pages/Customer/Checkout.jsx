@@ -565,7 +565,7 @@ if (!deliveryLandmarkName.trim()) {
             // ==================================================
             // ORDER PAYLOAD
             // ==================================================
-
+console.log("ACTUAL CART ITEMS:", cartItems);
             const orderPayload = {
                 customer_id: customerId,
 
@@ -604,17 +604,44 @@ if (!deliveryLandmarkName.trim()) {
                 // ITEMS
                 // ------------------------------
 
-                items: cartItems.map(
-                    (item) => ({
-                        menu_id: item.id,
-                        quantity:
-                            item.quantity,
-                        price: item.price,
-                        plate_type:
-                            item.plateType ||
-                            null,
-                    })
-                ),
+
+items: cartItems.flatMap((item) => {
+    const quantity = Number(item.quantity);
+
+    // Combo: Aloo Paratha + Chicken Chilli
+    const isCombo =
+        String(item.name || "").toLowerCase().includes("aloo paratha") &&
+        String(item.name || "").toLowerCase().includes("chicken chilli");
+
+    if (isCombo) {
+        return [
+            {
+                menu_id: 4,
+                quantity,
+                price: 40,
+                plate_type: null,
+            },
+            {
+                menu_id: 37,
+                quantity,
+                price: 180,
+                plate_type: null,
+            },
+        ];
+    }
+
+    // Normal food: preserve existing behaviour
+    return [
+        {
+            menu_id: Number(item.menu_id ?? item.menuId ?? item.id),
+            quantity,
+            price: Number(item.price),
+            plate_type: item.plateType || null,
+        },
+    ];
+}),
+
+
             };
 
             console.log(
