@@ -322,7 +322,15 @@ const total =
     // ======================================================
     // CONFIRM ORDER
     // ======================================================
-
+console.log("ACTUAL CART ITEMS:", cartItems);
+console.log(
+    "COMBO DEBUG:",
+    cartItems.map(item => ({
+        itemType: item.itemType,
+        comboId: item.comboId,
+        id: item.id
+    }))
+);
     const confirmOrder = async () => {
         const deliveryLandmark =
     deliveryLandmarkType &&
@@ -605,41 +613,31 @@ console.log("ACTUAL CART ITEMS:", cartItems);
                 // ------------------------------
 
 
-items: cartItems.flatMap((item) => {
+items: cartItems.map((item) => {
     const quantity = Number(item.quantity);
 
-    // Combo: Aloo Paratha + Chicken Chilli
-    const isCombo =
-        String(item.name || "").toLowerCase().includes("aloo paratha") &&
-        String(item.name || "").toLowerCase().includes("chicken chilli");
-
-    if (isCombo) {
-        return [
-            {
-                menu_id: 4,
-                quantity,
-                price: 40,
-                plate_type: null,
-            },
-            {
-                menu_id: 37,
-                quantity,
-                price: 180,
-                plate_type: null,
-            },
-        ];
-    }
-
-    // Normal food: preserve existing behaviour
-    return [
-        {
-            menu_id: Number(item.menu_id ?? item.menuId ?? item.id),
+    // Combo: send the real combo ID.
+    // The backend must validate it against the combos table.
+    if (item.itemType === "combo") {
+        return {
+            combo_id: Number(item.comboId),
             quantity,
             price: Number(item.price),
-            plate_type: item.plateType || null,
-        },
-    ];
+            item_type: "combo",
+        };
+    }
+
+    // Normal food: preserve existing behaviour.
+    return {
+        menu_id: Number(
+            item.menu_id ?? item.menuId ?? item.id
+        ),
+        quantity,
+        price: Number(item.price),
+        plate_type: item.plateType || null,
+    };
 }),
+
 
 
             };

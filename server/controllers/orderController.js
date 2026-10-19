@@ -682,6 +682,8 @@ exports.createOrder = async (
     res
 ) => {
 
+    let orderId = null;
+
     console.log("");
     console.log(
         "================================================"
@@ -1221,11 +1223,7 @@ actualPaymentMethod,
 
         }
 
-
-        const orderId =
-            Number(
-                orderResult.insertId
-            );
+orderId = Number(orderResult.insertId);
 
 
         console.log("");
@@ -1290,47 +1288,79 @@ actualPaymentMethod,
         // ==================================================
 
   
-const normalizedItems = items.flatMap((item) => {
+
+const normalizedItems = [];
+
+for (const item of items) {
     const quantity = Number(item.quantity ?? item.qty ?? 1);
 
-    // Combo payload: one item priced at ₹220, without menu_id
-    const itemName = String(item.name ?? item.item_name ?? "").toLowerCase();
-
+    const comboId = Number(item.combo_id ?? item.comboId);
     const isCombo =
-        item.comboId !== undefined ||
+        item.item_type === "combo" ||
+        item.itemType === "combo" ||
         item.combo_id !== undefined ||
-        (
-            itemName.includes("aloo paratha") &&
-            itemName.includes("chicken chilli")
-        ) ||
-        (
-            !Number.isInteger(Number(item.menu_id ?? item.menuId ?? item.id)) &&
-            Number(item.price ?? item.unit_price ?? item.unitPrice) === 220
-        );
+        item.comboId !== undefined;
 
     if (isCombo) {
-        return [
+        if (!Number.isInteger(comboId) || comboId <= 0) {
+            throw new Error("Invalid combo ID");
+        }
+
+        const comboRows = await new Promise((resolve, reject) => {
+            db.query(
+                `SELECT id, item1_id, item2_id, combo_price, available
+                 FROM combos
+                 WHERE id = ?
+                 LIMIT 1`,
+                [comboId],
+                (err, rows) => {
+                    if (err) return reject(err);
+                    resolve(rows);
+                }
+            );
+        });
+
+        if (!comboRows || comboRows.length === 0) {
+            throw new Error(`Combo ${comboId} not found`);
+        }
+
+        const combo = comboRows[0];
+
+        if (Number(combo.available) !== 1) {
+            throw new Error(`Combo ${comboId} is currently unavailable`);
+        }
+
+        const comboPrice = Number(combo.combo_price);
+        const component1Price = 40;
+        const component2Price = comboPrice - component1Price;
+
+        normalizedItems.push(
             {
-                menuId: 4,
+                menuId: Number(combo.item1_id),
                 quantity,
-                price: 40
+                price: component1Price,
+                isCombo: true
             },
             {
-                menuId: 37,
+                menuId: Number(combo.item2_id),
                 quantity,
-                price: 180
+                price: component2Price,
+                isCombo: true
             }
-        ];
-    }
+        );
 
-    return [{
-        menuId: Number(item.menu_id ?? item.menuId ?? item.id),
-        quantity,
-        price: Number(item.price ?? item.unit_price ?? item.unitPrice ?? 0)
-    }];
-});
+    } else {
+        normalizedItems.push({
+            menuId: Number(item.menu_id ?? item.menuId ?? item.id),
+            quantity,
+            price: Number(item.price ?? item.unit_price ?? item.unitPrice ?? 0),
+            isCombo: false
+        });
+    }
+}
 
 console.log("🍽️ NORMALIZED ITEMS =", normalizedItems);
+
 
 
 
@@ -1651,23 +1681,32 @@ console.log("🍽️ NORMALIZED ITEMS =", normalizedItems);
                 );
 
             }
-
+console.log("🔎 MENU AVAILABILITY DEBUG =", {
+    menuId: item.menuId,
+    menuName: menuItem.name || menuItem.item_name,
+    available: menuItem.available,
+    availableType: typeof menuItem.available,
+    currentStock,
+    stockQuantity
+});
 
             // ==================================================
             // 24. CHECK MENU AVAILABILITY
             // ==================================================
-
-            if (
-                menuItem.available !==
-                    undefined &&
-
-                menuItem.available !==
-                    null &&
-
-                Number(
-                    menuItem.available
-                ) === 0
-            ) {
+console.log("🔎 MENU AVAILABILITY DEBUG =", {
+    menuId: item.menuId,
+    menuName: menuItem.name || menuItem.item_name,
+    available: menuItem.available,
+    availableType: typeof menuItem.available,
+    currentStock: currentStock,
+    stockQuantity: stockQuantity
+});
+        if (
+    !item.isCombo &&
+    menuItem.available !== undefined &&
+    menuItem.available !== null &&
+    Number(menuItem.available) === 0
+) {
 
                 console.error(
                     "❌ MENU ITEM NOT AVAILABLE"
