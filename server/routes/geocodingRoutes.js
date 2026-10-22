@@ -21,8 +21,6 @@ router.get("/", async (req, res) => {
 
         const { address } = req.query;
 
-        console.log("📍 ADDRESS RECEIVED =", address);
-
         if (!address || !address.trim()) {
 
             return res.status(400).json({
@@ -38,8 +36,6 @@ router.get("/", async (req, res) => {
 
         const searchAddress =
             `${address.trim()}, Purulia, West Bengal, India`;
-
-        console.log("🔎 SEARCHING =", searchAddress);
 
         // --------------------------------------------------
         // 3. Encode address
@@ -57,8 +53,6 @@ router.get("/", async (req, res) => {
             `?format=jsonv2` +
             `&limit=5` +
             `&q=${encodedAddress}`;
-
-        console.log("🌍 NOMINATIM URL =", url);
 
         // --------------------------------------------------
         // 5. Call Nominatim

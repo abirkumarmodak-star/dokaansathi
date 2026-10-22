@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
+import api from "../../Services/api.js";
 
 
 const CustomerOrderEntry = () => {
@@ -44,12 +45,20 @@ const CustomerOrderEntry = () => {
 
 
 
-                const response = await fetch(
-    `https://dokaansathi.onrender.com/api/tables/qr/${qrCode}`
-);
+                const response = await api.get(
+                    `/tables/qr/${qrCode}`,
+                    {
+                        headers: {
+                            "Content-Type": null,
+                            Accept: "*/*"
+                        },
+                        validateStatus: () => true,
+                        transformResponse: [(data) => data]
+                    }
+                );
 
 
-                const data = await response.json();
+                const data = JSON.parse(response.data);
 
 
 

@@ -1,7 +1,6 @@
 const express = require("express");
 
 const router = express.Router();
-const db = require("../config/db");
 console.log("✅ deliveryAssignmentRoutes loaded");
 console.log("🔥🔥 ONLINE DEBUG VERSION = 2026-DEBUG-01 🔥🔥");
 const {
@@ -31,7 +30,7 @@ const requireRole = require("../middleware/roleMiddleware");
 
 
 // এখানে নতুন test route
-router.get("/online-status-test", (req, res) => {
+router.get("/online-status-test", authMiddleware, requireRole("Owner", "Manager"), (req, res) => {
     console.log("🟢 ONLINE STATUS TEST ROUTE HIT");
 
     res.json({
@@ -40,7 +39,7 @@ router.get("/online-status-test", (req, res) => {
     });
 });
 
-router.get("/heartbeat-test", (req, res) => {
+router.get("/heartbeat-test", authMiddleware, requireRole("Owner", "Manager"), (req, res) => {
     console.log("🟢🟢 HEARTBEAT TEST ROUTE HIT 🟢🟢");
 
     res.json({
@@ -54,7 +53,7 @@ router.patch(
     requireRole("DeliveryBoy"),
     setDeliveryBoyLeave
 );
-router.get("/test", (req, res) => {
+router.get("/test", authMiddleware, requireRole("Owner", "Manager"), (req, res) => {
 
     console.log("🔥 DELIVERY ASSIGNMENT TEST ROUTE HIT");
 
@@ -82,13 +81,13 @@ router.patch(
 router.post(
     "/auto-assign-waiting",
     authMiddleware,
-    requireRole("Manager"),
+    requireRole("Owner", "Manager"),
     staffAutoAssignWaitingDelivery
 );
 router.post(
     "/assign",
     authMiddleware,
-    requireRole("Manager"),
+    requireRole("Owner", "Manager"),
     assignDeliveryBoy
 );
 
@@ -122,6 +121,8 @@ router.patch(
 
 router.patch(
     "/online-status",
+    authMiddleware,
+    requireRole("DeliveryBoy"),
     updateOnlineStatus
 );
 
@@ -151,48 +152,6 @@ router.patch(
     requireRole("DeliveryBoy"),
     settleCashback
 );
-router.patch("/online-status-debug", (req, res) => {
-
-    const deliveryBoyId = 29;
-    const { online_status } = req.body;
-
-    console.log("🟢 ONLINE STATUS DEBUG");
-    console.log("Delivery Boy ID =", deliveryBoyId);
-    console.log("Status =", online_status);
-
-    const updateSQL = `
-        UPDATE staff
-        SET online_status = ?
-        WHERE id = ?
-        AND role = 'DeliveryBoy'
-    `;
-
-    db.query(
-        updateSQL,
-        [online_status, deliveryBoyId],
-        (err, result) => {
-
-            if (err) {
-                console.log("❌ DEBUG UPDATE ERROR:", err);
-
-                return res.status(500).json({
-                    success: false,
-                    error: err.sqlMessage || err.message
-                });
-            }
-
-            console.log("✅ DEBUG DB UPDATE SUCCESS");
-            console.log("Affected Rows =", result.affectedRows);
-
-            res.json({
-                success: true,
-                deliveryBoyId: deliveryBoyId,
-                online_status: online_status,
-                affectedRows: result.affectedRows
-            });
-        }
-    );
-});
 // ======================================================
 // CANCEL DELIVERY
 // ======================================================

@@ -1,4 +1,10 @@
 import { useState } from "react";
+import api from "../../Services/api";
+
+const FETCH_JSON_CONFIG = {
+    validateStatus: () => true,
+    transformResponse: [(data) => data],
+};
 
 function UpdateStockModal({
 
@@ -18,33 +24,25 @@ function UpdateStockModal({
 
         try {
 
-            const response = await fetch(
-
-                "https://dokaansathi.onrender.com/api/inventory/update-stock",
-
-                {
-
-                    method: "PUT",
-
-                    headers: {
-
-                        "Content-Type": "application/json"
-
-                    },
-
-                    body: JSON.stringify({
+            const response = await api.put(
+                "/inventory/update-stock",
+                JSON.stringify({
 
                         menu_id: item.menu_id,
 
                         opening_stock: openingStock
 
-                    })
-
+                    }),
+                {
+                    ...FETCH_JSON_CONFIG,
+                    headers: {
+                        "Content-Type": "application/json",
+                        Accept: "*/*"
+                    },
                 }
-
             );
 
-            const data = await response.json();
+            const data = JSON.parse(response.data);
 
             alert(data.message);
 

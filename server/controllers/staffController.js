@@ -11,7 +11,6 @@ console.log("✅ STAFF CONTROLLER LOADED");
 exports.getStaff = (req, res) => {
 
     console.log("🔥 GET STAFF CONTROLLER HIT");
-    console.log("REQ.USER =", req.user);
 
     Staff.getAllStaff((err, result) => {
 
@@ -50,11 +49,9 @@ exports.getStaff = (req, res) => {
 
 exports.createStaff = async (req, res) => {
 
-    console.log("====================================");
-    console.log("🔥 CREATE STAFF CONTROLLER HIT");
-    console.log("REQ.BODY =", req.body);
-    console.log("REQ.USER =", req.user);
-    console.log("====================================");
+
+
+
 
     try {
 
@@ -128,10 +125,7 @@ exports.createStaff = async (req, res) => {
 
                 if (checkErr) {
 
-                    console.log(
-                        "❌ Phone Check Error:",
-                        checkErr
-                    );
+
 
                     return res.status(500).json({
                         success: false,
@@ -164,11 +158,7 @@ exports.createStaff = async (req, res) => {
                 // ==================================================
                 // CREATE STAFF
                 // ==================================================
-console.log(
-    "DELIVERY WORK HOURS =",
-    work_start_time,
-    work_end_time
-);
+
 Staff.addStaff(
              {
     name,
@@ -186,42 +176,21 @@ Staff.addStaff(
 
                         if (err) {
 
-                            console.log(
-                                "===================================="
-                            );
 
-                            console.log(
-                                "❌ STAFF CREATION DATABASE ERROR"
-                            );
 
-                            console.log(
-                                "ERROR NAME =",
-                                err.name
-                            );
 
-                            console.log(
-                                "ERROR MESSAGE =",
-                                err.message
-                            );
 
-                            console.log(
-                                "ERROR CODE =",
-                                err.code
-                            );
 
-                            console.log(
-                                "ERROR SQL MESSAGE =",
-                                err.sqlMessage
-                            );
 
-                            console.log(
-                                "ERROR SQL =",
-                                err.sql
-                            );
 
-                            console.log(
-                                "===================================="
-                            );
+
+
+
+
+
+
+
+
 
                             return res.status(500).json({
                                 success: false,
@@ -262,47 +231,23 @@ Staff.addStaff(
 
     catch (error) {
 
-        console.log(
-            "===================================="
-        );
 
-        console.log(
-            "❌❌❌ CREATE STAFF UNEXPECTED ERROR"
-        );
 
-        console.log(
-            "ERROR NAME =",
-            error.name
-        );
 
-        console.log(
-            "ERROR MESSAGE =",
-            error.message
-        );
 
-        console.log(
-            "ERROR CODE =",
-            error.code
-        );
 
-        console.log(
-            "ERROR SQL MESSAGE =",
-            error.sqlMessage
-        );
 
-        console.log(
-            "ERROR SQL =",
-            error.sql
-        );
 
-        console.log(
-            "STACK =",
-            error.stack
-        );
 
-        console.log(
-            "===================================="
-        );
+
+
+
+
+
+
+
+
+
 
         return res.status(500).json({
             success: false,
@@ -319,8 +264,6 @@ exports.updateAvailability = (req, res) => {
 
     console.log("====================================");
     console.log("🚚 UPDATE DELIVERY BOY AVAILABILITY");
-    console.log("REQ.USER =", req.user);
-    console.log("REQ.BODY =", req.body);
     console.log("====================================");
 
     const { online_status } = req.body;
@@ -652,8 +595,16 @@ exports.updateWorkingHours = (req, res) => {
 exports.resetStaffPassword = async (req, res) => {
 
     const { staffId, newPassword } = req.body;
+    const numericStaffId = Number(staffId);
 
-    if (!staffId || !newPassword) {
+    if (!Number.isInteger(numericStaffId) || numericStaffId <= 0) {
+        return res.status(400).json({
+            success: false,
+            message: "Invalid staff ID"
+        });
+    }
+
+    if (!newPassword) {
         return res.status(400).json({
             success: false,
             message: "Staff ID and new password are required"
@@ -673,13 +624,20 @@ exports.resetStaffPassword = async (req, res) => {
             await bcrypt.hash(newPassword, 12);
 
         Staff.updatePassword(
-            staffId,
+            numericStaffId,
             hashedPassword,
             (err, result) => {
 
                 if (err) {
-                    console.log("❌ PASSWORD RESET ERROR =", err);
 
+
+                    return res.status(500).json({
+                        success: false,
+                        message: "Password reset failed"
+                    });
+                }
+
+                if (!result || !Number.isInteger(result.affectedRows) || result.affectedRows < 0) {
                     return res.status(500).json({
                         success: false,
                         message: "Password reset failed"
@@ -702,11 +660,110 @@ exports.resetStaffPassword = async (req, res) => {
 
     } catch (error) {
 
-        console.log("❌ PASSWORD HASH ERROR =", error);
+
 
         return res.status(500).json({
             success: false,
             message: "Server Error"
         });
     }
+};
+
+exports.updateStaffPhone = (req, res) => {
+    const staffId = Number(req.params.id);
+    const phone = String(req.body.phone || "").trim();
+
+    if (!Number.isInteger(staffId) || staffId <= 0) {
+        return res.status(400).json({
+            success: false,
+            message: "Invalid staff ID"
+        });
+    }
+
+    if (!/^[0-9]{10,15}$/.test(phone)) {
+        return res.status(400).json({
+            success: false,
+            message: "Enter a valid phone number (10–15 digits)"
+        });
+    }
+
+    Staff.getStaffById(staffId, (staffErr, staffRows) => {
+        if (staffErr) {
+            return res.status(500).json({
+                success: false,
+                message: "Failed to find staff"
+            });
+        }
+
+        const currentStaff = staffRows && staffRows[0];
+
+        if (!currentStaff) {
+            return res.status(404).json({
+                success: false,
+                message: "Staff not found"
+            });
+        }
+
+        if (String(currentStaff.phone) === phone) {
+            return res.status(200).json({
+                success: true,
+                message: "Phone number is already up to date"
+            });
+        }
+
+        Staff.findByPhone(phone, (err, rows) => {
+            if (err) {
+                return res.status(500).json({
+                    success: false,
+                    message: "Failed to check phone number"
+                });
+            }
+
+            const duplicate = (rows || []).some(
+                staff => Number(staff.id) !== staffId
+            );
+
+            if (duplicate) {
+                return res.status(409).json({
+                    success: false,
+                    message: "This phone number is already in use"
+                });
+            }
+
+            Staff.updatePhone(staffId, phone, (updateErr, result) => {
+                if (updateErr) {
+                    if (updateErr.code === "ER_DUP_ENTRY" || updateErr.errno === 1062) {
+                        return res.status(409).json({
+                            success: false,
+                            message: "This phone number is already in use"
+                        });
+                    }
+
+                    return res.status(500).json({
+                        success: false,
+                        message: "Phone number update failed"
+                    });
+                }
+
+                if (!result || !Number.isInteger(result.affectedRows) || result.affectedRows < 0) {
+                    return res.status(500).json({
+                        success: false,
+                        message: "Phone number update failed"
+                    });
+                }
+
+                if (result.affectedRows === 0) {
+                    return res.status(404).json({
+                        success: false,
+                        message: "Staff not found"
+                    });
+                }
+
+                return res.status(200).json({
+                    success: true,
+                    message: "Phone number updated successfully"
+                });
+            });
+        });
+    });
 };

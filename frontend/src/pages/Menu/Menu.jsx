@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import api from "../../Services/api.js";
 
 import SearchBar from "../../components/menu/Searchbar";
 import MenuTable from "../../components/menu/Menutable";
@@ -39,13 +40,16 @@ const [combos, setCombos] = useState([]);
 
         try {
 
-            const response = await fetch(
-
-                "https://dokaansathi.onrender.com/api/menu"
-
+            const response = await api.get(
+                "/menu",
+                {
+                    headers: { "Content-Type": null, Accept: "*/*" },
+                    validateStatus: () => true,
+                    transformResponse: [(data) => data]
+                }
             );
 
-            if (!response.ok) {
+            if (response.status < 200 || response.status >= 300) {
 
                 throw new Error("Failed to fetch menu");
 
@@ -53,7 +57,7 @@ const [combos, setCombos] = useState([]);
 
 
     
-            const data = await response.json();
+            const data = JSON.parse(response.data);
 const formattedMenu = data.map((item) => ({
 
     id: item.id,
@@ -104,15 +108,20 @@ const formattedMenu = data.map((item) => ({
 
     try {
 
-        const response = await fetch(
-            "https://dokaansathi.onrender.com/api/menu/combos"
+        const response = await api.get(
+            "/menu/combos",
+            {
+                headers: { "Content-Type": null, Accept: "*/*" },
+                validateStatus: () => true,
+                transformResponse: [(data) => data]
+            }
         );
 
-        if (!response.ok) {
+        if (response.status < 200 || response.status >= 300) {
             throw new Error("Failed to fetch combos");
         }
 
-        const data = await response.json();
+        const data = JSON.parse(response.data);
 
         setCombos(data.combos || []);
 
@@ -196,35 +205,27 @@ alert(token);
 
             const token = localStorage.getItem("token");
 
-            let url = "https://dokaansathi.onrender.com/api/menu";
+            let url = "/menu";
 
             let method = "POST";
 
             if (selectedFood) {
 
-                url = `https://dokaansathi.onrender.com/api/menu/${selectedFood.id}`;
+                url = `/menu/${selectedFood.id}`;
 
                 method = "PUT";
 
             }
 
-            const response = await fetch(
-
+            const response = await api.request({
                 url,
-
-                {
-
-                    method,
-
-                    headers: {
-
-                        "Content-Type": "application/json",
-
-                        Authorization: `Bearer ${token}`
-
-                    },
-
-                    body: JSON.stringify({
+                method,
+                headers: {
+                    "Content-Type": "application/json",
+                    Accept: "*/*",
+                    Authorization: `Bearer ${token}`
+                },
+                data: JSON.stringify({
 
     name: foodData.name,
 
@@ -246,14 +247,14 @@ alert(token);
 
     serving_size: foodData.servingSize
 
-})
-                }
+}),
+                validateStatus: () => true,
+                transformResponse: [(data) => data]
+            });
 
-            );
+            const data = JSON.parse(response.data);
 
-            const data = await response.json();
-
-            if (!response.ok) {
+            if (response.status < 200 || response.status >= 300) {
 
                 alert(data.message);
 
@@ -298,27 +299,22 @@ alert(token);
 
             const token = localStorage.getItem("token");
 
-            const response = await fetch(
-
-                `https://dokaansathi.onrender.com/api/menu/${id}`,
-
+            const response = await api.delete(
+                `/menu/${id}`,
                 {
-
-                    method: "DELETE",
-
                     headers: {
-
+                        "Content-Type": null,
+                        Accept: "*/*",
                         Authorization: `Bearer ${token}`
-
-                    }
-
+                    },
+                    validateStatus: () => true,
+                    transformResponse: [(data) => data]
                 }
-
             );
 
-            const data = await response.json();
+            const data = JSON.parse(response.data);
 
-            if (!response.ok) {
+            if (response.status < 200 || response.status >= 300) {
 
                 alert(data.message);
 
@@ -387,22 +383,17 @@ const handleCreateCombo = async () => {
 
         const token = localStorage.getItem("token");
 
-      const response = await fetch(
-    editingCombo
-        ? `https://dokaansathi.onrender.com/api/menu/combos/${editingCombo.id}`
-        : "https://dokaansathi.onrender.com/api/menu/combos",
-    {
-        method: editingCombo ? "PUT" : "POST",
-
-                headers: {
-
-                    "Content-Type": "application/json",
-
-                    Authorization: `Bearer ${token}`
-
-                },
-
-                body: JSON.stringify({
+      const response = await api.request({
+          url: editingCombo
+              ? `/menu/combos/${editingCombo.id}`
+              : "/menu/combos",
+          method: editingCombo ? "PUT" : "POST",
+          headers: {
+              "Content-Type": "application/json",
+              Accept: "*/*",
+              Authorization: `Bearer ${token}`
+          },
+          data: JSON.stringify({
 
                     item1_id: Number(comboItem1),
 
@@ -412,14 +403,14 @@ const handleCreateCombo = async () => {
 
                     is_preferred: comboPreferred ? 1 : 0
 
-                })
+          }),
+          validateStatus: () => true,
+          transformResponse: [(data) => data]
+      });
 
-            }
-        );
+        const data = JSON.parse(response.data);
 
-        const data = await response.json();
-
-        if (!response.ok) {
+        if (response.status < 200 || response.status >= 300) {
 
             alert(data.message || "Failed to create combo");
 
@@ -470,19 +461,22 @@ const handleDeleteCombo = async (comboId) => {
     try {
         const token = localStorage.getItem("token");
 
-        const response = await fetch(
-            `https://dokaansathi.onrender.com/api/menu/combos/${comboId}`,
+        const response = await api.delete(
+            `/menu/combos/${comboId}`,
             {
-                method: "DELETE",
                 headers: {
+                    "Content-Type": null,
+                    Accept: "*/*",
                     Authorization: `Bearer ${token}`
-                }
+                },
+                validateStatus: () => true,
+                transformResponse: [(data) => data]
             }
         );
 
-        const data = await response.json();
+        const data = JSON.parse(response.data);
 
-        if (!response.ok) {
+        if (response.status < 200 || response.status >= 300) {
             alert(data.message || "Failed to delete combo");
             return;
         }
@@ -502,27 +496,23 @@ const handleDeleteCombo = async (comboId) => {
 
             const token = localStorage.getItem("token");
 
-            const response = await fetch(
-
-                `https://dokaansathi.onrender.com/api/menu/toggle/${id}`,
-
+            const response = await api.patch(
+                `/menu/toggle/${id}`,
+                undefined,
                 {
-
-                    method: "PATCH",
-
                     headers: {
-
+                        "Content-Type": null,
+                        Accept: "*/*",
                         Authorization: `Bearer ${token}`
-
-                    }
-
+                    },
+                    validateStatus: () => true,
+                    transformResponse: [(data) => data]
                 }
-
             );
 
-            const data = await response.json();
+            const data = JSON.parse(response.data);
 
-            if (!response.ok) {
+            if (response.status < 200 || response.status >= 300) {
 
                 alert(data.message);
 
@@ -564,20 +554,23 @@ const handleMakeAllUnavailable = async () => {
 
         const token = localStorage.getItem("token");
 
-        const response = await fetch(
-            "https://dokaansathi.onrender.com/api/menu/make-all-unavailable",
+        const response = await api.patch(
+            "/menu/make-all-unavailable",
+            undefined,
             {
-                method: "PATCH",
-
                 headers: {
+                    "Content-Type": null,
+                    Accept: "*/*",
                     Authorization: `Bearer ${token}`
-                }
+                },
+                validateStatus: () => true,
+                transformResponse: [(data) => data]
             }
         );
 
-        const data = await response.json();
+        const data = JSON.parse(response.data);
 
-        if (!response.ok) {
+        if (response.status < 200 || response.status >= 300) {
 
             alert(data.message || "Failed to update menu");
 

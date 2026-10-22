@@ -1,6 +1,19 @@
-require("dotenv").config();
+﻿require("dotenv").config();
 
 const mysql = require("mysql2");
+const {
+    assertDatabaseConfiguration,
+    verifyConnectedDatabase
+} = require("./config/databaseIsolation");
+
+let expectedDatabaseName;
+
+try {
+    expectedDatabaseName = assertDatabaseConfiguration(process.env);
+} catch {
+    console.error("Database configuration validation failed; script will stop.");
+    process.exit(1);
+}
 
 const db = mysql.createConnection({
     host: process.env.DB_HOST,
@@ -14,36 +27,34 @@ const db = mysql.createConnection({
 });
 
 db.connect((err) => {
-
     if (err) {
-        console.log("❌ CONNECTION ERROR");
-        console.log(err.message);
+        console.error("Database connection failed; script will stop.");
+        db.end(() => process.exitCode = 1);
         return;
     }
 
-    console.log("✅ AIVEN CONNECTED");
+    verifyConnectedDatabase(db, expectedDatabaseName)
+        .then(() => new Promise((resolve, reject) => {
+            db.query(
+                "SHOW TABLES LIKE 'delivery_assignments'",
+                (queryError, result) => {
+                    if (queryError) {
+                        reject(queryError);
+                        return;
+                    }
 
-    db.query(
-        "SHOW TABLES LIKE 'delivery_assignments'",
-        (err, result) => {
-
-            if (err) {
-                console.log("❌ QUERY ERROR");
-                console.log(err.message);
-            } else {
-
-                console.log(
-                    "========== AIVEN DELIVERY TABLE =========="
-                );
-
-                console.log(result);
-
-                console.log(
-                    "=========================================="
-                );
-            }
-
+                    resolve(result);
+                }
+            );
+        }))
+        .then((result) => {
+            console.log("========== DELIVERY ASSIGNMENT TABLE ==========");
+            console.log(result);
+            console.log("===============================================");
             db.end();
-        }
-    );
+        })
+        .catch(() => {
+            console.error("Database identity verification or query failed; script will stop.");
+            db.end(() => process.exitCode = 1);
+        });
 });

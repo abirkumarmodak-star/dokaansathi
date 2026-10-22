@@ -1,6 +1,9 @@
 const express = require("express");
 
 const router = express.Router();
+const authMiddleware = require("../middleware/authMiddleware");
+const requireRole = require("../middleware/roleMiddleware");
+const tableStaff = [authMiddleware, requireRole("Owner", "Manager", "Counter", "Waiter")];
 
 console.log("✅ tableRoutes.js loaded");
 
@@ -26,6 +29,7 @@ console.log("getTableByQR=", getTableByQR);
 // Get All Tables
 router.get(
     "/",
+    ...tableStaff,
     getTables
 );
 router.get(
@@ -35,6 +39,7 @@ router.get(
 // Get Single Table
 router.get(
     "/:id",
+    ...tableStaff,
     getTableById
 );
 

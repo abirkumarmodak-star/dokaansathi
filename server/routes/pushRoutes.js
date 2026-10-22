@@ -2,14 +2,15 @@ const express = require("express");
 const router = express.Router();
 const webPush = require("../config/webPush");
 const db = require("../config/db");
+const authMiddleware = require("../middleware/authMiddleware");
+const requireRole = require("../middleware/roleMiddleware");
 
 // ==========================================
 // SAVE PUSH SUBSCRIPTION
 // ==========================================
 
-router.post("/subscribe", (req, res) => {
+router.post("/subscribe", authMiddleware, requireRole("DeliveryBoy", "Manager"), (req, res) => {
    console.log("🚨 PUSH SUBSCRIBE ROUTE HIT");
-    console.log("🚨 PUSH SUBSCRIBE BODY =", req.body);
     const {
         staff_id,
         subscription
@@ -29,6 +30,10 @@ router.post("/subscribe", (req, res) => {
             message:
                 "Invalid push subscription data"
         });
+    }
+
+    if (Number(staff_id) !== Number(req.user.id)) {
+        return res.status(403).json({ success: false, message: "Access denied" });
     }
 
     const sql = `
@@ -83,7 +88,7 @@ router.post("/subscribe", (req, res) => {
 // 🧪 TEST PUSH NOTIFICATION
 // ==========================================
 
-router.post("/test/:staffId", (req, res) => {
+router.post("/test/:staffId", authMiddleware, requireRole("Owner", "Manager"), (req, res) => {
 
     const staffId = Number(req.params.staffId);
 

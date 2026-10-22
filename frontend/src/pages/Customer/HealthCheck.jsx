@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import axios from "axios";
+import api from "../../Services/api.js";
 import "./HealthCheck.css";
 
 function HealthCheck() {
@@ -13,9 +13,9 @@ function HealthCheck() {
 
             try {
 
-                await axios.get(
-                    "https://dokaansathi.onrender.com/api/health"
-                );
+                await api.get('/health', {
+                    headers: { "Content-Type": null },
+                });
 
                 navigate("/customer-home");
 

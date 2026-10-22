@@ -1,11 +1,12 @@
 const express = require("express");
 const router = express.Router();
+const authMiddleware = require("../middleware/authMiddleware");
+const requireRole = require("../middleware/roleMiddleware");
+router.use(authMiddleware, requireRole("Owner", "Manager", "Kitchen", "Counter", "Waiter"));
 
 console.log("✅ alertRoutes.js loaded");
 
 router.use((req, res, next) => {
-
-    console.log("ALERT ROUTE HIT:", req.method, req.url);
 
     next();
 

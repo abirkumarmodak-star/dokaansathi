@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import api from "../../Services/api.js";
 import "./staffLogin.css";
 
 function StaffLogin() {
@@ -28,30 +29,35 @@ function StaffLogin() {
             // STAFF LOGIN API
             // ==================================================
 
-            const response = await fetch(
-                "https://dokaansathi.onrender.com/api/staff/login",
+            const response = await api.post(
+                "/staff/login",
                 {
-                    method: "POST",
-
-                    headers: {
-                        "Content-Type": "application/json"
-                    },
-
-                    body: JSON.stringify({
-                        phone,
-                        password
-                    })
+                    phone,
+                    password
+                },
+                {
+                    headers: { Accept: "*/*" },
+                    validateStatus: () => true,
+                    transformResponse: [(data) => data]
                 }
             );
 
-            const result = await response.json();
+            const result = JSON.parse(response.data);
+
+            if (
+                !result ||
+                typeof result !== "object" ||
+                Array.isArray(result)
+            ) {
+                alert("Unable to connect to server");
+                return;
+            }
 
             // ==================================================
             // DEBUG
             // ==================================================
 
             console.log("STAFF LOGIN STATUS =", response.status);
-            console.log("STAFF LOGIN RESPONSE =", result);
 
             // ==================================================
             // LOGIN FAILED
@@ -61,6 +67,17 @@ function StaffLogin() {
 
                 alert(result.message || "Login Failed");
 
+                return;
+            }
+
+            if (
+                typeof result.token !== "string" ||
+                !result.token ||
+                !result.staff ||
+                typeof result.staff !== "object" ||
+                Array.isArray(result.staff)
+            ) {
+                alert("Unable to connect to server");
                 return;
             }
 
@@ -90,39 +107,12 @@ function StaffLogin() {
                 "staff",
                 JSON.stringify(result.staff)
             );
-console.log("TOKEN FROM SERVER =", result.token);
-
-
-console.log(
-    "AFTER SAVE TOKEN =",
-    localStorage.getItem("staffToken")
-);
-
-console.log(
-    "AFTER SAVE USER =",
-    localStorage.getItem("staffUser")
-);
             // ==================================================
             // DEBUG
             // ==================================================
 
             console.log(
                 "✅ STAFF LOGIN SUCCESS"
-            );
-
-            console.log(
-                "STAFF USER =",
-                result.staff
-            );
-
-            console.log(
-                "STAFF ROLE =",
-                result.staff.role
-            );
-
-            console.log(
-                "STAFF TOKEN SAVED =",
-                !!localStorage.getItem("staffToken")
             );
 
             // ==================================================
@@ -137,12 +127,18 @@ console.log(
 
             console.error(
                 "❌ STAFF LOGIN ERROR =",
-                error
+                error.message
             );
 
-            alert(
-                "Unable to connect to server"
-            );
+            const serverMessage = error.response?.data?.message;
+
+            if (typeof serverMessage === "string" && serverMessage.trim()) {
+                alert(serverMessage);
+            } else if (error.response) {
+                alert("Login Failed");
+            } else {
+                alert("Unable to connect to server");
+            }
         }
     };
 

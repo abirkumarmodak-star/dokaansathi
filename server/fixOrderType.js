@@ -1,18 +1,23 @@
-const path = require("path");
+﻿const path = require("path");
 
 require("dotenv").config({
     path: path.join(__dirname, ".env")
 });
 
 const mysql = require("mysql2");
+const {
+    assertDatabaseConfiguration,
+    verifyConnectedDatabase
+} = require("./config/databaseIsolation");
 
-console.log("========== FIX SCRIPT DB CONFIG ==========");
-console.log("HOST:", process.env.DB_HOST);
-console.log("USER:", process.env.DB_USER);
-console.log("DATABASE:", process.env.DB_NAME);
-console.log("PORT:", process.env.DB_PORT);
-console.log("PASSWORD EXISTS:", !!process.env.DB_PASSWORD);
-console.log("==========================================");
+let expectedDatabaseName;
+
+try {
+    expectedDatabaseName = assertDatabaseConfiguration(process.env);
+} catch {
+    console.error("Database configuration validation failed; script will stop.");
+    process.exit(1);
+}
 
 const db = mysql.createConnection({
     host: process.env.DB_HOST,
@@ -23,47 +28,51 @@ const db = mysql.createConnection({
 });
 
 db.connect((err) => {
-
     if (err) {
-        console.log("❌ DATABASE CONNECTION FAILED:");
-        console.log(err);
+        console.error("Database connection failed; script will stop.");
+        db.end(() => process.exitCode = 1);
         return;
     }
 
-    console.log("✅ AIVEN DATABASE CONNECTED");
+    verifyConnectedDatabase(db, expectedDatabaseName)
+        .then(() => new Promise((resolve, reject) => {
+            const sql = `
+                ALTER TABLE orders
+                MODIFY order_type
+                ENUM('Manual','Dine-In','Delivery','Takeaway')
+                NOT NULL
+            `;
 
-    const sql = `
-        ALTER TABLE orders
-        MODIFY order_type
-        ENUM('Manual','Dine-In','Delivery','Takeaway')
-        NOT NULL
-    `;
-
-    db.query(sql, (err, result) => {
-
-        if (err) {
-            console.log("❌ ALTER FAILED:");
-            console.log(err);
-            return;
-        }
-
-        console.log("✅ ORDER TYPE ALTER SUCCESSFUL");
-
-        db.query(
-            "SHOW COLUMNS FROM orders LIKE 'order_type'",
-            (err, rows) => {
-
-                if (err) {
-                    console.log(err);
+            db.query(sql, (queryError) => {
+                if (queryError) {
+                    reject(queryError);
                     return;
                 }
 
-                console.log("========== FINAL ORDER TYPE ==========");
-                console.log(rows);
-                console.log("======================================");
+                resolve();
+            });
+        }))
+        .then(() => new Promise((resolve, reject) => {
+            db.query(
+                "SHOW COLUMNS FROM orders LIKE 'order_type'",
+                (queryError, rows) => {
+                    if (queryError) {
+                        reject(queryError);
+                        return;
+                    }
 
-                db.end();
-            }
-        );
-    });
+                    resolve(rows);
+                }
+            );
+        }))
+        .then((rows) => {
+            console.log("========== FINAL ORDER TYPE ==========");
+            console.log(rows);
+            console.log("======================================");
+            db.end();
+        })
+        .catch(() => {
+            console.error("Database identity verification or script query failed; script stopped.");
+            db.end(() => process.exitCode = 1);
+        });
 });

@@ -1,4 +1,10 @@
 const db = require("../config/db");
+const { cleanupFailedOrder: cleanupFailedOrderTransaction } = require("../services/failedOrderCleanup");
+const {
+    generateTrackingCapability,
+    hashTrackingCapability,
+    verifyTrackingCapability
+} = require("../services/orderTrackingCapability");
 const {
     sendPushToDeliveryBoy,
     sendPushToManagers
@@ -153,11 +159,7 @@ async function calculateDeliveryDistance(
                     );
 
 
-                    console.log(
-                        "📍 CUSTOMER LOCATION =",
-                        customerLat,
-                        customerLng
-                    );
+
 
 
                     // ==================================================
@@ -175,10 +177,7 @@ async function calculateDeliveryDistance(
                         `?overview=false`;
 
 
-                    console.log(
-                        "🛣️ OSRM URL =",
-                        osrmUrl
-                    );
+
 
 
                     try {
@@ -702,11 +701,6 @@ exports.createOrder = async (
         // 1. FRONTEND REQUEST BODY
         // ==================================================
 
-        console.log(
-            "📦 REQUEST BODY =",
-            req.body
-        );
-
 
         const {
 
@@ -971,17 +965,10 @@ exports.createOrder = async (
             }
 
 
-            console.log(
-                "📍 DELIVERY ADDRESS =",
-                delivery_address
-            );
 
 
-            console.log(
-                "📍 DELIVERY LANDMARK =",
-                delivery_landmark ||
-                "Not provided"
-            );
+
+
 
         }
 
@@ -1030,11 +1017,11 @@ let distanceSource = null;
                 }
             );
 
+        const trackingCapability = generateTrackingCapability();
+        const trackingTokenHash = hashTrackingCapability(trackingCapability);
 
-        console.log(
-            "🎫 GENERATED TOKEN =",
-            token
-        );
+
+
 
 
         // ==================================================
@@ -1161,10 +1148,7 @@ actualPaymentMethod,
         ];
 
 
-        console.log(
-            "📝 ORDER VALUES =",
-            orderValues
-        );
+
 
 
         const orderResult =
@@ -1225,6 +1209,14 @@ actualPaymentMethod,
 
 orderId = Number(orderResult.insertId);
 
+        await new Promise((resolve, reject) => {
+            db.query(
+                "INSERT INTO order_tracking_capabilities (order_id, tracking_token_hash) VALUES (?, ?)",
+                [orderId, trackingTokenHash],
+                (error, result) => error ? reject(error) : resolve(result)
+            );
+        });
+
 
         console.log("");
         console.log(
@@ -1240,10 +1232,7 @@ orderId = Number(orderResult.insertId);
             orderId
         );
 
-        console.log(
-            "🎫 TOKEN =",
-            token
-        );
+
 
         console.log(
             "📏 DISTANCE =",
@@ -1287,7 +1276,7 @@ orderId = Number(orderResult.insertId);
         // 15. NORMALIZE ITEMS
         // ==================================================
 
-  
+
 
 const normalizedItems = [];
 
@@ -1359,7 +1348,7 @@ for (const item of items) {
     }
 }
 
-console.log("🍽️ NORMALIZED ITEMS =", normalizedItems);
+
 
 
 
@@ -2986,10 +2975,7 @@ catch (managerPushError) {
         );
 
 
-        console.log(
-            "🎫 TOKEN =",
-            token
-        );
+
 
 
         console.log(
@@ -3058,6 +3044,8 @@ catch (managerPushError) {
 
             tokenNumber:
                 token,
+
+            trackingCapability,
 
             orderType:
                 actualOrderType,
@@ -3140,78 +3128,16 @@ cashbackAmount:
 // CLEANUP FAILED ORDER
 // ======================================================
 
-function cleanupFailedOrder(
-    orderId,
-    res,
-    message
-) {
-
-    console.log(
-        "🧹 CLEANING FAILED ORDER =",
-        orderId
-    );
-
-
-    // ==================================================
-    // DELETE ORDER ITEMS FIRST
-    // ==================================================
-
-    db.query(
-        `
-            DELETE FROM order_items
-            WHERE order_id = ?
-        `,
-        [orderId],
-        (itemDeleteError) => {
-
-            if (itemDeleteError) {
-
-                console.error(
-                    "❌ ORDER ITEM CLEANUP ERROR:",
-                    itemDeleteError
-                );
-
-            }
-
-
-            // ==================================================
-            // DELETE ORDER
-            // ==================================================
-
-            db.query(
-                `
-                    DELETE FROM orders
-                    WHERE id = ?
-                `,
-                [orderId],
-                (orderDeleteError) => {
-
-                    if (orderDeleteError) {
-
-                        console.error(
-                            "❌ ORDER CLEANUP ERROR:",
-                            orderDeleteError
-                        );
-
-                    }
-
-
-                    return res.status(400).json({
-
-                        success: false,
-
-                        message:
-                            message ||
-                            "Order creation failed"
-
-                    });
-
-                }
-            );
-
-        }
-    );
-
+function cleanupFailedOrder(orderId, res, message) {
+    console.log("🧹 CLEANING FAILED ORDER =", orderId);
+    cleanupFailedOrderTransaction(db, orderId)
+        .catch((error) => {
+            console.error("Order cleanup failed; transaction was rolled back or connection quarantined:", error);
+        })
+        .finally(() => res.status(400).json({
+            success: false,
+            message: message || "Order creation failed"
+        }));
 }
 
 
@@ -3625,7 +3551,7 @@ exports.getPendingOrders = (req, res) => {
 
             s.shop_name,
             s.phone AS shop_phone,
-            
+
             s.latitude AS shop_latitude,
             s.longitude AS shop_longitude
 (
@@ -3692,11 +3618,7 @@ exports.getOrderByToken = (req, res) => {
 
     const token =
         req.params.token;
-
-    console.log(
-        "🔎 GET ORDER BY TOKEN:",
-        token
-    );
+    const trackingCapability = req.get("X-Order-Tracking-Capability");
 
 
     if (!token) {
@@ -3712,6 +3634,7 @@ exports.getOrderByToken = (req, res) => {
     const orderSql = `
         SELECT
             o.*,
+            otc.tracking_token_hash,
 
             c.name AS customer_name,
             c.phone AS customer_phone,
@@ -3744,6 +3667,9 @@ exports.getOrderByToken = (req, res) => {
         LEFT JOIN shop_settings s
             ON s.id = o.shop_id
 
+        LEFT JOIN order_tracking_capabilities otc
+            ON otc.order_id = o.id
+
         WHERE o.token_number = ?
 
         LIMIT 1
@@ -3764,8 +3690,7 @@ exports.getOrderByToken = (req, res) => {
 
                 return res.status(500).json({
                     success: false,
-                    message: "Database error",
-                    error: err.message
+                    message: "Unable to process request"
                 });
 
             }
@@ -3778,7 +3703,7 @@ exports.getOrderByToken = (req, res) => {
 
                 return res.status(404).json({
                     success: false,
-                    message: "Order not found"
+                    message: "Order unavailable"
                 });
 
             }
@@ -3786,6 +3711,15 @@ exports.getOrderByToken = (req, res) => {
 
             const order =
                 orders[0];
+
+            if (!verifyTrackingCapability(order.tracking_token_hash, trackingCapability)) {
+                return res.status(404).json({
+                    success: false,
+                    message: "Order unavailable"
+                });
+            }
+
+            delete order.tracking_token_hash;
 
 
             const itemsSql = `
@@ -4438,12 +4372,6 @@ exports.updateOrder = (req, res) => {
     } = req.body;
 
 
-    console.log(
-        "🔥 UPDATE ORDER:",
-        req.body
-    );
-
-
     // ========================================================
     // VALIDATE ORDER ID
     // ========================================================
@@ -4705,21 +4633,19 @@ exports.cancelOrder = (
     res
 ) => {
 
-    const {
-        order_id
-    } = req.body;
+    const { order_id } = req.body;
+    const trackingCapability = req.get("X-Order-Tracking-Capability");
 
 
     // ========================================================
     // VALIDATE
     // ========================================================
 
-    if (!order_id) {
+    if (!order_id || !trackingCapability) {
 
-        return res.status(400).json({
+        return res.status(404).json({
             success: false,
-            message:
-                "order_id is required"
+            message: "Order unavailable"
         });
 
     }
@@ -4736,6 +4662,7 @@ exports.cancelOrder = (
             o.order_type,
             o.order_status,
             o.total_amount,
+            otc.tracking_token_hash,
             da.id AS assignment_id,
             da.delivery_boy_id,
             da.status AS delivery_status
@@ -4744,6 +4671,9 @@ exports.cancelOrder = (
 
         LEFT JOIN delivery_assignments da
             ON da.order_id = o.id
+
+        LEFT JOIN order_tracking_capabilities otc
+            ON otc.order_id = o.id
 
         WHERE o.id = ?
     `;
@@ -4756,16 +4686,11 @@ exports.cancelOrder = (
             err,
             results
         ) => {
-  console.log("CANCEL ORDER QUERY RESULT:", results);
-        console.log("CANCEL ORDER ID:", order_id);
             if (err) {
 
                 return res.status(500).json({
                     success: false,
-                    message:
-                        "Failed to check order",
-                    error:
-                        err.message
+                    message: "Unable to process request"
                 });
 
             }
@@ -4777,8 +4702,7 @@ exports.cancelOrder = (
 
                 return res.status(404).json({
                     success: false,
-                    message:
-                        "Order not found"
+                    message: "Order unavailable"
                 });
 
             }
@@ -4786,6 +4710,20 @@ exports.cancelOrder = (
 
             const order =
                 results[0];
+
+            if (!verifyTrackingCapability(order.tracking_token_hash, trackingCapability)) {
+                return res.status(404).json({
+                    success: false,
+                    message: "Order unavailable"
+                });
+            }
+
+            if (["Preparing", "Ready", "Served", "Completed", "Cancelled"].includes(order.order_status)) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Order cannot be cancelled after preparation has started."
+                });
+            }
 
 
             // ==================================================
@@ -4924,9 +4862,9 @@ if (
 
                                 WHERE id = ?
 
-                                AND order_status NOT IN (
-                                    'Completed',
-                                    'Cancelled'
+                                AND order_status IN (
+                                    'Pending',
+                                    'Accepted'
                                 )
                             `;
 
@@ -5386,12 +5324,6 @@ exports.receivePayment = (
         order_id,
         payment_method
     } = req.body;
-
-
-    console.log(
-        "💰 RECEIVE PAYMENT:",
-        req.body
-    );
 
 
     // ========================================================

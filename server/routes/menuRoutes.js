@@ -31,6 +31,8 @@ getCombos,
 // ==============================
 
 const authMiddleware = require("../middleware/authMiddleware");
+const requireRole = require("../middleware/roleMiddleware");
+const ownerOrManager = [authMiddleware, requireRole("Owner", "Manager")];
 // ==============================
 // MENU ROUTES
 // ==============================
@@ -59,24 +61,24 @@ router.get(
 
 router.post(
     "/combos",
-    authMiddleware,
+    ...ownerOrManager,
     createCombo
 );
 router.put(
     "/combos/:id",
-    authMiddleware,
+    ...ownerOrManager,
     updateCombo
 );
 router.delete(
     "/combos/:id",
-    authMiddleware,
+    ...ownerOrManager,
     deleteCombo
 );
 router.post(
 
     "/",
 
-    authMiddleware,
+    ...ownerOrManager,
 
     createMenu
 
@@ -89,7 +91,7 @@ router.put(
 
     "/:id",
 
-    authMiddleware,
+    ...ownerOrManager,
 
     updateMenu
 
@@ -102,7 +104,7 @@ router.delete(
 
     "/:id",
 
-    authMiddleware,
+    ...ownerOrManager,
 
     deleteMenu
 
@@ -115,14 +117,14 @@ router.delete(
 
 router.patch(
     "/make-all-unavailable",
-    authMiddleware,
+    ...ownerOrManager,
     makeAllMenuUnavailable
 );
 router.patch(
 
     "/toggle/:id",
 
-    authMiddleware,
+    ...ownerOrManager,
 
     toggleMenuStatus
 

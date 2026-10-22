@@ -1,5 +1,11 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import api from "../../Services/api";
+
+const FETCH_JSON_CONFIG = {
+    validateStatus: () => true,
+    transformResponse: [(data) => data],
+};
 
 function OwnerRegister() {
 
@@ -43,27 +49,26 @@ function OwnerRegister() {
 
             setLoading(true);
 
-            const response = await fetch(
-                "https://dokaansathi.onrender.com/api/users",
-                {
-                    method: "POST",
-
-                    headers: {
-                        "Content-Type": "application/json"
-                    },
-
-                    body: JSON.stringify({
+            const response = await api.post(
+                "/users/bootstrap",
+                JSON.stringify({
                         name,
                         phone,
                         password,
                         language
-                    })
+                    }),
+                {
+                    ...FETCH_JSON_CONFIG,
+                    headers: {
+                        "Content-Type": "application/json",
+                        Accept: "*/*"
+                    },
                 }
             );
 
-            const data = await response.json();
+            const data = JSON.parse(response.data);
 
-            if (!response.ok) {
+            if (response.status < 200 || response.status >= 300) {
 
                 setError(
                     data.message ||

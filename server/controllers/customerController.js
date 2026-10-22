@@ -46,8 +46,6 @@ exports.createCustomer = (req, res) => {
 
     console.log("🔥 CREATE CUSTOMER FUNCTION RUNNING");
 
-    console.log("REQUEST BODY:", req.body);
-
 
     const {
         name,

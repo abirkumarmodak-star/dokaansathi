@@ -43,40 +43,16 @@ exports.findByPhone = (phone, callback) => {
 
     db.query(sql, [phone], callback);
 };
-db.query(
-    `SELECT
-        DATABASE() AS db,
-        @@hostname AS host,
-        @@port AS port,
-        @@sql_mode AS sql_mode`,
-    (err, result) => {
 
-        if (err) {
-            console.error("DB DEBUG ERROR =", err);
-            return;
-        }
+exports.getStaffById = (staffId, callback) => {
+    const sql = `
+        SELECT id, phone
+        FROM staff
+        WHERE id = ?
+    `;
 
-        console.log("========== INSERT DB DEBUG ==========");
-        console.log(result[0]);
-
-        db.query(
-            `SHOW COLUMNS FROM staff LIKE 'role'`,
-            (err2, result2) => {
-
-                if (err2) {
-                    console.error("STAFF COLUMN DEBUG ERROR =", err2);
-                    return;
-                }
-
-                console.log("========== STAFF ROLE DEBUG ==========");
-                console.log(result2[0]);
-
-                // YOUR EXISTING INSERT HERE
-            }
-        );
-    }
-);
-
+    db.query(sql, [staffId], callback);
+};
 // ===============================
 // ADD NEW STAFF
 // Password is already hashed
@@ -222,4 +198,18 @@ exports.updatePassword = (staffId, hashedPassword, callback) => {
         [hashedPassword, staffId],
         callback
     );
+};
+// ===============================
+// UPDATE STAFF PHONE NUMBER
+// ===============================
+
+exports.updatePhone = (staffId, phone, callback) => {
+
+    const sql = `
+        UPDATE staff
+        SET phone = ?
+        WHERE id = ?
+    `;
+
+    db.query(sql, [phone, staffId], callback);
 };

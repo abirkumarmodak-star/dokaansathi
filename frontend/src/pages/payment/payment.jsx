@@ -1,5 +1,11 @@
 import { useEffect, useState } from "react";
+import api from "../../Services/api";
 import "./payment.css";
+
+const FETCH_JSON_CONFIG = {
+    validateStatus: () => true,
+    transformResponse: [(data) => data],
+};
 
 function Payment() {
 
@@ -14,11 +20,15 @@ function Payment() {
 
         try {
 
-            const response = await fetch(
-                "https://dokaansathi.onrender.com/api/orders/pending-payment"
+            const response = await api.get(
+                "/orders/pending-payment",
+                {
+                    ...FETCH_JSON_CONFIG,
+                    headers: { "Content-Type": null, Accept: "*/*" },
+                }
             );
 
-            const data = await response.json();
+            const data = JSON.parse(response.data);
 
             console.log("FULL RESPONSE :", data);
             console.log("Pending Payments :", data.pendingPayments);
@@ -58,33 +68,25 @@ function Payment() {
 
         try {
 
-            const response = await fetch(
-
-                "https://dokaansathi.onrender.com/api/orders/payment",
-
-                {
-
-                    method: "PUT",
-
-                    headers: {
-
-                        "Content-Type": "application/json"
-
-                    },
-
-                    body: JSON.stringify({
+            const response = await api.put(
+                "/orders/payment",
+                JSON.stringify({
 
                         order_id: order.id,
 
                         payment_method: order.payment_method || "Cash"
 
-                    })
-
+                    }),
+                {
+                    ...FETCH_JSON_CONFIG,
+                    headers: {
+                        "Content-Type": "application/json",
+                        Accept: "*/*"
+                    },
                 }
-
             );
 
-            const result = await response.json();
+            const result = JSON.parse(response.data);
 
             alert(result.message);
 

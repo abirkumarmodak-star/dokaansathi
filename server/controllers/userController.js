@@ -1,6 +1,7 @@
 const db = require("../config/db");
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
+const { bootstrapFirstOwner } = require("../services/ownerBootstrap");
 console.log("✅ USER CONTROLLER LOADED");
 
 // ==============================
@@ -19,7 +20,7 @@ exports.getUsers = (req, res) => {
         FROM users
     `;
 
-    db.query(sql, [phone], async (err, result) => {
+    db.query(sql, (err, result) => {
 
         if (err) {
             return res.status(500).json({
@@ -40,7 +41,7 @@ exports.getUsers = (req, res) => {
 // ==============================
 // CREATE OWNER USER
 // ==============================
-exports.createUser = async (req, res) => {
+exports.createOwnerBootstrap = async (req, res) => {
 
     try {
 
@@ -55,7 +56,11 @@ exports.createUser = async (req, res) => {
         // VALIDATION
         // ==============================
 
-        if (!name || !phone || !password) {
+        if (
+            typeof name !== "string" || !name.trim() ||
+            typeof phone !== "string" || !phone.trim() ||
+            typeof password !== "string" || password.length < 6
+        ) {
 
             return res.status(400).json({
 
@@ -70,121 +75,34 @@ exports.createUser = async (req, res) => {
         // CHECK PHONE
         // ==============================
 
-        const checkSQL = `
-            SELECT id
-            FROM users
-            WHERE phone = ?
-        `;
+        const hashedPassword = await bcrypt.hash(password, 12);
+        const result = await bootstrapFirstOwner(db, {
+            name: name.trim(),
+            phone: phone.trim(),
+            passwordHash: hashedPassword,
+            language: language || "English"
+        });
 
-        db.query(
-            checkSQL,
-            [phone],
-            async (checkErr, existingUsers) => {
+        if (!result.created) {
+            return res.status(409).json({
+                success: false,
+                message: "Owner setup has already been completed"
+            });
+        }
 
-                if (checkErr) {
-
-                    console.log(checkErr);
-
-                    return res.status(500).json({
-
-                        success: false,
-                        message: "Database Error"
-
-                    });
-
-                }
-
-                if (existingUsers.length > 0) {
-
-                    return res.status(409).json({
-
-                        success: false,
-                        message: "This phone number is already registered"
-
-                    });
-
-                }
-
-                // ==============================
-                // HASH PASSWORD
-                // ==============================
-
-                const hashedPassword =
-                    await bcrypt.hash(password, 12);
-
-                // ==============================
-                // CREATE OWNER
-                // ==============================
-
-                const sql = `
-                    INSERT INTO users
-                    (
-                        name,
-                        phone,
-                        password,
-                        role,
-                        language
-                    )
-                    VALUES (?, ?, ?, 'owner', ?)
-                `;
-
-                db.query(
-                    sql,
-                    [
-                        name,
-                        phone,
-                        hashedPassword,
-                        language || "English"
-                    ],
-                    (err, result) => {
-
-                        if (err) {
-
-                            console.log(err);
-
-                            return res.status(500).json({
-
-                                success: false,
-                                message: "Account Creation Failed"
-
-                            });
-
-                        }
-
-                        return res.status(201).json({
-
-                            success: true,
-
-                            message:
-                                "Owner Account Created Successfully",
-
-                            user: {
-
-                                id: result.insertId,
-
-                                name,
-
-                                phone,
-
-                                role: "owner",
-
-                                language:
-                                    language || "English"
-
-                            }
-
-                        });
-
-                    }
-                );
-
-            }
-        );
+        return res.status(201).json({
+            success: true,
+            message: "Owner Account Created Successfully"
+        });
 
     }
     catch (error) {
 
-        console.log(error);
+        if (error.code === "OWNER_BOOTSTRAP_BUSY") {
+            return res.status(409).json({ success: false, message: error.message });
+        }
+
+        console.error("Owner bootstrap failed.", error.code || "internal error");
 
         return res.status(500).json({
 
@@ -210,8 +128,6 @@ exports.loginUser = (req, res) => {
 
     const { phone, password } = req.body;
 
-    console.log("PHONE RECEIVED:", phone);
-
     if (!phone || !password) {
 
         return res.status(400).json({
@@ -231,7 +147,7 @@ exports.loginUser = (req, res) => {
 
         if (err) {
 
-            console.log(err);
+            console.error("Login request failed.");
 
             return res.status(500).json({
                 success: false,

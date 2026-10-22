@@ -9,10 +9,16 @@ const {
     updateShopSettings
 
 } = require("../controllers/shopSettingsController");
+const authMiddleware = require("../middleware/authMiddleware");
+const requireRole = require("../middleware/roleMiddleware");
 
 router.get(
 
     "/",
+
+    authMiddleware,
+
+    requireRole("Owner"),
 
     getShopSettings
 
@@ -21,6 +27,10 @@ router.get(
 router.put(
 
     "/",
+
+    authMiddleware,
+
+    requireRole("Owner"),
 
     updateShopSettings
 

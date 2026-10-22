@@ -16,17 +16,18 @@ console.log("====================================");
 console.log("🔥 DOKAANSATHI SERVER STARTING...");
 console.log("====================================");
 
-console.log("DB HOST:", process.env.DB_HOST);
-console.log("DB USER:", process.env.DB_USER);
-console.log("DB NAME:", process.env.DB_NAME);
-console.log("DB PORT:", process.env.DB_PORT);
-console.log("PASSWORD EXISTS:", !!process.env.DB_PASSWORD);
-
 // ======================================================
 // DATABASE
 // ======================================================
 
-const db = require("./config/db");
+let db;
+
+try {
+    db = require("./config/db");
+} catch {
+    console.error("Database configuration validation failed; server will not start.");
+    process.exit(1);
+}
 
 console.log("✅ DATABASE MODULE LOADED");
 
@@ -78,6 +79,18 @@ console.log("✅ ALL ROUTES/SERVICES LOADED");
 
 const app = express();
 
+// Keep Express's default direct-peer IP behavior unless deployment explicitly
+// configures trusted proxy hops or addresses. Never trust all forwarded headers.
+const trustedProxySetting = process.env.TRUST_PROXY?.trim();
+if (trustedProxySetting) {
+    const trustedProxy = /^\d+$/.test(trustedProxySetting)
+        ? Number(trustedProxySetting)
+        : trustedProxySetting.split(",").map((value) => value.trim()).filter(Boolean);
+    if (trustedProxy !== 0 && (typeof trustedProxy === "number" || trustedProxy.length > 0)) {
+        app.set("trust proxy", trustedProxy);
+    }
+}
+
 // ======================================================
 // MIDDLEWARE
 // ======================================================
@@ -100,7 +113,6 @@ app.use((req, res, next) => {
     console.log("REQUEST RECEIVED");
     console.log("METHOD :", req.method);
     console.log("URL    :", req.originalUrl);
-    console.log("BODY   :", req.body);
     console.log("==============================\n");
 
     next();
@@ -468,77 +480,40 @@ app.use(
 const PORT =
     process.env.PORT || 5000;
 
-console.log(
-    "🚨 ABOUT TO START SERVER..."
-);
-
-app.listen(
-    PORT,
-    "0.0.0.0",
-    () => {
-
-        console.log(
-            "===================================="
-        );
-
-        console.log(
-           `🚀 SERVER RUNNING ON PORT ${PORT}`
-        );
-
-        console.log(
-            `🌐 http://localhost:${PORT}`
-        );
-
-        console.log(
-            `❤️  http://localhost:${PORT}/api/health`
-        );
-
-        console.log(
-            `📍 http://localhost:${PORT}/api/geocode?address=TEST123`
-        );
-
-        console.log(
-            "===================================="
-        );
-
-        console.log(
-            "✅ MySQL Connected Successfully"
-        );
-
-        console.log(
-            "✅ Smart Alert Engine Started"
-        );
-
+async function startServer() {
+    try {
+        await db.verifyDatabaseIdentity();
+    } catch {
+        console.error("Database connection or identity verification failed; server will not start.");
+        db.end(() => process.exit(1));
+        return;
     }
-);
 
-// ======================================================
-// BACKGROUND TIMER
-// ======================================================
+    console.log("Database identity verified; starting HTTP server.");
 
-// ======================================================
-// BACKGROUND TIMER
-// ======================================================
+    app.listen(
+        PORT,
+        "0.0.0.0",
+        () => {
+            console.log("====================================");
+            console.log(`🚀 SERVER RUNNING ON PORT ${PORT}`);
+            console.log(`🌐 http://localhost:${PORT}`);
+            console.log(`❤️  http://localhost:${PORT}/api/health`);
+            console.log(`📍 http://localhost:${PORT}/api/geocode?address=TEST123`);
+            console.log("====================================");
+            console.log("✅ Database identity verified");
+            console.log("✅ Smart Alert Engine Started");
+        }
+    );
 
-setInterval(
-    () => {
+    setInterval(
+        () => {
+            console.log("⏰ Background Timer Running");
+            checkPendingOrders();
+            checkDeliveryAssignmentEscalation();
+        },
+        30000
+    );
+}
 
-        console.log(
-            "⏰ Background Timer Running"
-        );
-
-        // ----------------------------------------------
-        // CHECK PENDING ORDERS
-        // ----------------------------------------------
-
-        checkPendingOrders();
-
-        // ----------------------------------------------
-        // CHECK DELIVERY ASSIGNMENT ESCALATION
-        // ----------------------------------------------
-
-        checkDeliveryAssignmentEscalation();
-
-    },
-    30000
-);
+startServer();

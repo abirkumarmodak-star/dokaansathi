@@ -1,5 +1,11 @@
 import { useEffect, useState } from "react";
 import Sidebar from "../../components/layout/Sidebar";
+import api from "../../Services/api";
+
+const FETCH_JSON_CONFIG = {
+    validateStatus: () => true,
+    transformResponse: [(data) => data],
+};
 function Dashboard() {
 
     const [dashboard, setDashboard] = useState(null);
@@ -10,26 +16,22 @@ function Dashboard() {
 
     useEffect(() => {
 
-        fetch("https://dokaansathi.onrender.com/api/dashboard")
+        api.get("/dashboard", {
+            ...FETCH_JSON_CONFIG,
+            headers: { "Content-Type": null, Accept: "*/*" },
+        })
 
-            .then((res) => res.json())
+            .then((res) => JSON.parse(res.data))
 
             .then((data) => {
+
+                console.log("Dashboard API:", data);
 
                 setDashboard(data.dashboard);
 
                 setLoading(false);
 
             })
-.then((data) => {
-
-    console.log("Dashboard API:", data);
-
-    setDashboard(data.dashboard);
-
-    setLoading(false);
-
-})
             .catch((err) => {
 
                 console.log(err);

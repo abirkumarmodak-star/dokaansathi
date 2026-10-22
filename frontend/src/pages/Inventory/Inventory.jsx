@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import api from "../../Services/api";
 import "./Inventory.css";
 
 import InventoryCard from "../../components/inventory/InventoryCard";
@@ -27,13 +28,14 @@ const loadInventory = async () => {
 
     try {
 
-        const response = await fetch(
-      
-   "https://dokaansathi.onrender.com/api/inventory"
-);
+        const response = await api.get("/inventory", {
+            validateStatus: () => true,
+            transformResponse: [(data) => data],
+            headers: { "Content-Type": null, Accept: "*/*" },
+        });
         
 
-        const data = await response.json();
+        const data = JSON.parse(response.data);
 
         console.log("Inventory Data:", data);
 

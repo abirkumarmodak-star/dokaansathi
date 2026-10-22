@@ -1,47 +1,15 @@
-console.log("✅ ROLE MIDDLEWARE FILE LOADED");
-const requireRole = (...allowedRoles) => {
+"use strict";
 
-    return (req, res, next) => {
+const requireRole = (...allowedRoles) => (req, res, next) => {
+    if (!req.user) {
+        return res.status(401).json({ success: false, message: "Authentication required" });
+    }
 
-        console.log("========== ROLE DEBUG ==========");
-        console.log("REQ.USER =", req.user);
-        console.log("USER ROLE =", req.user?.role);
-        console.log("ALLOWED ROLES =", allowedRoles);
-        console.log("================================");
+    if (!allowedRoles.includes(req.user.role)) {
+        return res.status(403).json({ success: false, message: "Access denied" });
+    }
 
-        // User login/authenticated কিনা
-        if (!req.user) {
-
-            console.log("❌ NO req.user");
-
-            return res.status(401).json({
-                success: false,
-                message: "Authentication required"
-            });
-
-        }
-
-        // User-এর role অনুমোদিত কিনা
-        if (!allowedRoles.includes(req.user.role)) {
-
-            console.log(
-                "❌ ROLE MISMATCH:",
-                req.user.role,
-                "EXPECTED:",
-                allowedRoles
-            );
-
-            return res.status(403).json({
-                success: false,
-                message: "Access denied"
-            });
-
-        }
-
-        console.log("✅ ROLE AUTHORIZED");
-
-        next();
-    };
+    return next();
 };
 
 module.exports = requireRole;

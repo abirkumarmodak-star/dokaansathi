@@ -1,6 +1,6 @@
 import { useNavigate } from "react-router-dom";
 import React, { useEffect, useState } from "react";
-import axios from "axios";
+import api from "../../Services/api";
 import "./OwnerDashboard.css";
 
 function OwnerDashboard() {
@@ -11,9 +11,9 @@ const loadDashboard = async () => {
 
     try {
 
-        const res = await axios.get(
-            "https://dokaansathi.onrender.com/api/dashboard"
-        );
+        const res = await api.get("/dashboard", {
+            headers: { "Content-Type": null },
+        });
 
         console.log(res.data);
 
@@ -32,9 +32,9 @@ const loadInventory = async () => {
 
     try {
 
-        const res = await axios.get(
-            "https://dokaansathi.onrender.com/api/inventory"
-        );
+        const res = await api.get("/inventory", {
+            headers: { "Content-Type": null },
+        });
 
         setInventory(res.data);
 

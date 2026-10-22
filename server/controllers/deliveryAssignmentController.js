@@ -742,15 +742,9 @@ exports.assignDeliveryBoy = (req, res) => {
                                 deliveryBoy.id
                             );
 
-                            console.log(
-                                "Name =",
-                                deliveryBoy.name
-                            );
 
-                            console.log(
-                                "Phone =",
-                                deliveryBoy.phone
-                            );
+
+
 
                             console.log(
                                 "============================================="
@@ -1112,10 +1106,6 @@ exports.acceptDelivery = (req, res) => {
 
             const assignment =
                 checkResult[0];
-                console.log("📍 SHOP LAT =", assignment.shop_latitude);
-console.log("📍 SHOP LNG =", assignment.shop_longitude);
-console.log("📍 CUSTOMER LAT =", assignment.customer_latitude);
-console.log("📍 CUSTOMER LNG =", assignment.customer_longitude);
 let distanceKm = null;
 
 if (
@@ -1265,7 +1255,7 @@ console.log("🔥 FINAL RESPONSE DATA =", {
                         status:
                             "Accepted",
                          distanceKm:
-        distanceKm   
+        distanceKm
 
                     });
 
@@ -1287,11 +1277,6 @@ exports.getMyDeliveryOrders = (req, res) => {
 
     console.log(
         "🚚 GET MY DELIVERY ORDERS"
-    );
-
-    console.log(
-        "AUTH USER =",
-        req.user
     );
 
 
@@ -1572,11 +1557,11 @@ o.delivery_landmark,
 
                                     order_type:
                                         order.order_type,
-                                   
+
 cashback_amount: Number(order.cashback_amount || 0),
 cashback_status: order.cashback_status,
 cashback_paid_by: order.cashback_paid_by,
-cashback_paid_at: order.cashback_paid_at,     
+cashback_paid_at: order.cashback_paid_at,
 
                                     payment_status:
                                         order.payment_status,
@@ -1800,9 +1785,9 @@ exports.updateOnlineStatus = (req, res) => {
             // SAVE GPS
             // ==================================================
 
-            
 
-              
+
+
 
 
 

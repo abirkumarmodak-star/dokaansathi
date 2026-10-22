@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
+import api from "../../Services/api.js";
 
 const CustomerMenu = () => {
 
@@ -630,13 +631,19 @@ const fetchMenu = async () => {
 
         setError("");
 
-        const response =
-            await fetch(
-                 "https://dokaansathi.onrender.com/api/menu"
-            );
+        const response = await api.get(
+            "/menu",
+            {
+                headers: {
+                    "Content-Type": null,
+                    Accept: "*/*"
+                },
+                validateStatus: () => true,
+                transformResponse: [(data) => data]
+            }
+        );
 
-        const data =
-            await response.json();
+        const data = JSON.parse(response.data);
 
         console.log(
             "========== MENU RESPONSE =========="
@@ -649,7 +656,7 @@ const fetchMenu = async () => {
         );
 
 
-        if (!response.ok) {
+        if (response.status < 200 || response.status >= 300) {
 
             setError(
                 data.message ||
@@ -714,15 +721,23 @@ const fetchMenu = async () => {
 };
 const fetchCombos = async () => {
     try {
-        const response = await fetch(
-            "https://dokaansathi.onrender.com/api/menu/combos"
+        const response = await api.get(
+            "/menu/combos",
+            {
+                headers: {
+                    "Content-Type": null,
+                    Accept: "*/*"
+                },
+                validateStatus: () => true,
+                transformResponse: [(data) => data]
+            }
         );
 
-        if (!response.ok) {
+        if (response.status < 200 || response.status >= 300) {
             throw new Error("Failed to fetch combos");
         }
 
-        const data = await response.json();
+        const data = JSON.parse(response.data);
 
         setCombos(
             (data.combos || []).filter(
@@ -1249,6 +1264,91 @@ return (
 
             ))}
 {/* COMBO SECTION */}
+
+{combos.length > 0 && (
+    <div
+        style={{
+            marginBottom: "22px",
+            padding: "22px 16px",
+            borderRadius: "16px",
+            border: "2px solid #f59e0b",
+            background: "linear-gradient(135deg, #fff7cc, #ffe0b2, #fecaca)",
+            boxShadow: "0 5px 18px rgba(220, 38, 38, 0.16)",
+            textAlign: "center"
+        }}
+    >
+        <div
+            style={{
+                color: "#991b1b",
+                fontSize: "14px",
+                fontWeight: "900",
+                letterSpacing: "2px",
+                marginBottom: "8px"
+            }}
+        >
+            🔥 DOKAAN SATHI MEGA DEALS 🔥
+        </div>
+
+        <div
+            style={{
+                display: "inline-block",
+                background: "linear-gradient(90deg, #dc2626, #ea580c)",
+                color: "#ffffff",
+                padding: "10px 22px",
+                borderRadius: "12px",
+                fontSize: "clamp(24px, 5vw, 38px)",
+                fontWeight: "900",
+                marginBottom: "12px",
+                textShadow: "1px 2px 3px rgba(0,0,0,0.2)"
+            }}
+        >
+            UP TO 77.8769% OFF!
+        </div>
+
+        <div
+            style={{
+                color: "#9a3412",
+                fontSize: "20px",
+                fontWeight: "900",
+                marginBottom: "8px"
+            }}
+        >
+            🎉 COMBO DHAMAKA 🎉
+        </div>
+
+        <div
+            style={{
+                color: "#7f1d1d",
+                fontSize: "15px",
+                fontWeight: "700",
+                lineHeight: "1.6"
+            }}
+        >
+            Big Discounts. Exciting Cashback. Unbeatable Combos!
+        </div>
+
+        <div
+            style={{
+                color: "#7c2d12",
+                fontSize: "14px",
+                marginTop: "7px"
+            }}
+        >
+            Grab your favourite combos and enjoy amazing savings!
+        </div>
+
+        <div
+            style={{
+                color: "#92400e",
+                fontSize: "11px",
+                marginTop: "10px"
+            }}
+        >
+            *Up to 77.8769% off and cashback apply only to eligible offers. Terms and conditions apply.
+        </div>
+    </div>
+)}
+
 {combos.length > 0 && (
     <div style={{ marginBottom: "30px" }}>
         <h2 style={{ marginBottom: "15px" }}>

@@ -1,6 +1,8 @@
 const express = require("express");
 
 const router = express.Router();
+const authMiddleware = require("../middleware/authMiddleware");
+const requireRole = require("../middleware/roleMiddleware");
 
 const {
 
@@ -15,6 +17,10 @@ const {
 router.patch(
 
     "/status",
+
+    authMiddleware,
+
+    requireRole("Owner", "Manager", "Waiter", "Counter"),
 
     updateTableStatus
 

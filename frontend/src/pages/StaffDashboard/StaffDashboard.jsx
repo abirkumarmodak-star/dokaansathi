@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from "react";
-import axios from "axios";
+import api from "../../Services/api.js";
 import "./StaffDashboard.css";
 import { useNavigate } from "react-router-dom";
 
@@ -7,8 +7,6 @@ import { useNavigate } from "react-router-dom";
 // ======================================================
 // BACKEND API
 // ======================================================
-
-const API_URL = "https://dokaansathi.onrender.com/api";
 
 const urlBase64ToUint8Array = (base64String) => {
 
@@ -103,7 +101,7 @@ const [managerDeliveryAlert, setManagerDeliveryAlert] =
 
     const firstManagerAssignmentLoad =
         useRef(true);
-    
+
     // ======================================================
     // NOTIFICATION AUDIO
     // ======================================================
@@ -386,7 +384,7 @@ const [managerDeliveryAlert, setManagerDeliveryAlert] =
     // OWNER QR SCANNER
     // ======================================================
 
-    
+
     // ======================================================
     // ENABLE NOTIFICATIONS
     // ======================================================
@@ -571,17 +569,6 @@ const [managerDeliveryAlert, setManagerDeliveryAlert] =
                     );
 
                 console.log(
-                    "🔑 VAPID PUBLIC KEY =",
-                    import.meta.env
-                        .VITE_VAPID_PUBLIC_KEY
-                );
-
-                console.log(
-                    "🔑 ALL VITE ENV =",
-                    import.meta.env
-                );
-
-                console.log(
                     "🔔 Push Service Worker Registered"
                 );
 
@@ -650,12 +637,6 @@ const [managerDeliveryAlert, setManagerDeliveryAlert] =
                 console.log(
                     "🔔 PUSH SUBSCRIPTION CREATED"
                 );
-console.log("🚨 PUSH STAFF DEBUG =", {
-    staff,
-    staffId: staff?.id,
-    staffName: staff?.name,
-    staffRole: staff?.role
-});
                 // ======================================
                 // CHECK STAFF
                 // ======================================
@@ -673,33 +654,24 @@ console.log("🚨 PUSH STAFF DEBUG =", {
                 // SEND SUBSCRIPTION TO BACKEND
                 // ======================================
 
-                const response =
-                    await fetch(
-                        `${API_URL}/push/subscribe`,
-                        {
-                            method:
-                                "POST",
+                const response = await api.post(
+                    '/push/subscribe',
+                    {
+                        staff_id: staff.id,
+                        subscription: subscription.toJSON()
+                    },
+                    {
+                        headers: {
+                            "Content-Type": "application/json",
+                            Accept: "*/*",
+                            Authorization: `Bearer ${localStorage.getItem("staffToken")}`
+                        },
+                        validateStatus: () => true,
+                        transformResponse: [(data) => data]
+                    }
+                );
 
-                            headers: {
-                                "Content-Type":
-                                    "application/json"
-                            },
-
-                            body:
-                                JSON.stringify(
-                                    {
-                                        staff_id:
-                                            staff.id,
-
-                                        subscription:
-                                            subscription.toJSON()
-                                    }
-                                )
-                        }
-                    );
-
-                const data =
-                    await response.json();
+                const data = JSON.parse(response.data);
 
                 console.log(
                     "🔔 PUSH SUBSCRIPTION RESPONSE =",
@@ -971,19 +943,16 @@ useEffect(() => {
                 // GET ASSIGNED ORDERS
                 // ----------------------------------------------
 
-                const res =
-                    await axios.get(
-
-                        `${API_URL}/delivery-assignments/my-orders`,
-
-                        {
-                            headers: {
-                                Authorization:
-                                    `Bearer ${staffToken}`
-                            }
+                const res = await api.get(
+                    '/delivery-assignments/my-orders',
+                    {
+                        headers: {
+                            "Content-Type": null,
+                            Authorization:
+                                `Bearer ${staffToken}`
                         }
-
-                    );
+                    }
+                );
 
 
                 console.log(
@@ -1387,10 +1356,11 @@ useEffect(() => {
             );
 
 
-            const res =
-                await axios.get(
-                    `${API_URL}/orders`
-                );
+            const res = await api.get('/orders', {
+                headers: {
+                    "Content-Type": null
+                }
+            });
 
 
             console.log(
@@ -1433,7 +1403,7 @@ console.table(
             // a new Delivery order enters the dashboard.
             // ==================================================
 
-            
+
                     // ------------------------------------------
                     // SAVE CURRENT DELIVERY ORDER IDS
                     // ------------------------------------------
@@ -1861,21 +1831,16 @@ const autoAssignWaitingDelivery = async () => {
         }
 
 
-        const response =
-            await axios.post(
-
-                `${API_URL}/delivery-assignments/auto-assign-waiting`,
-
-                {},
-
-                {
-                    headers: {
-                        Authorization:
-                            `Bearer ${token}`
-                    }
+        const response = await api.post(
+            '/delivery-assignments/auto-assign-waiting',
+            {},
+            {
+                headers: {
+                    Authorization:
+                        `Bearer ${token}`
                 }
-
-            );
+            }
+        );
 
 
         console.log(
@@ -1930,13 +1895,7 @@ const acceptOrder = async (
 
     try {
 
-        await axios.post(
-            `${API_URL}/orders/accept`,
-            {
-                order_id:
-                    orderId
-            }
-        );
+        await api.post('/orders/accept', { order_id: orderId });
 
 
         alert(
@@ -1975,13 +1934,7 @@ const startPreparing = async (
 
     try {
 
-        await axios.post(
-            `${API_URL}/orders/preparing`,
-            {
-                order_id:
-                    orderId
-            }
-        );
+        await api.post('/orders/preparing', { order_id: orderId });
 
 
         alert(
@@ -2020,13 +1973,7 @@ const markReady = async (
 
     try {
 
-        await axios.post(
-            `${API_URL}/orders/ready`,
-            {
-                order_id:
-                    orderId
-            }
-        );
+        await api.post('/orders/ready', { order_id: orderId });
 
 
         alert(
@@ -2065,13 +2012,7 @@ const completeOrder = async (
 
     try {
 
-        await axios.post(
-            `${API_URL}/orders/complete`,
-            {
-                order_id:
-                    orderId
-            }
-        );
+        await api.post('/orders/complete', { order_id: orderId });
 
 
         alert(
@@ -2116,21 +2057,15 @@ const acceptDelivery = async (
             );
 
 
-        const res =
-            await axios.patch(
-
-                `${API_URL}/delivery-assignments/accept/${assignmentId}`,
-
-                {},
-
-                {
-                    headers: {
-                        Authorization:
-                            `Bearer ${staffToken}`
-                    }
+        const res = await api.patch(
+            `/delivery-assignments/accept/${assignmentId}`,
+            {},
+            {
+                headers: {
+                    Authorization: `Bearer ${staffToken}`
                 }
-
-            );
+            }
+        );
 
 
         console.log(
@@ -2184,21 +2119,15 @@ const pickupDelivery = async (
             );
 
 
-        const res =
-            await axios.patch(
-
-                `${API_URL}/delivery-assignments/pickup/${assignmentId}`,
-
-                {},
-
-                {
-                    headers: {
-                        Authorization:
-                            `Bearer ${staffToken}`
-                    }
+        const res = await api.patch(
+            `/delivery-assignments/pickup/${assignmentId}`,
+            {},
+            {
+                headers: {
+                    Authorization: `Bearer ${staffToken}`
                 }
-
-            );
+            }
+        );
 
 
         console.log(
@@ -2265,21 +2194,15 @@ const sendHeartbeat = async () => {
         }
 
 
-        const response =
-            await axios.patch(
-
-                `${API_URL}/delivery-assignments/heartbeat`,
-
-                {},
-
-                {
-                    headers: {
-                        Authorization:
-                            `Bearer ${token}`
-                    }
+        const response = await api.patch(
+            '/delivery-assignments/heartbeat',
+            {},
+            {
+                headers: {
+                    Authorization: `Bearer ${token}`
                 }
-
-            );
+            }
+        );
 
 
         console.log(
@@ -2322,24 +2245,17 @@ const applyLeave = async () => {
                 : 1;
 
 
-        const response =
-            await axios.patch(
-
-                `${API_URL}/delivery-assignments/leave`,
-
-                {
-                    on_leave:
-                        newLeaveStatus
-                },
-
-                {
-                    headers: {
-                        Authorization:
-                            `Bearer ${token}`
-                    }
+        const response = await api.patch(
+            '/delivery-assignments/leave',
+            {
+                on_leave: newLeaveStatus
+            },
+            {
+                headers: {
+                    Authorization: `Bearer ${token}`
                 }
-
-            );
+            }
+        );
 
 
         console.log(
@@ -3818,26 +3734,22 @@ const logout = () => {
                                     );
 
 
-                                    const response =
-                                        await fetch(
-                                           `${API_URL}/delivery-assignments/deliver/${order.assignment_id}`,
-                                            {
-                                                method:
-                                                    "PATCH",
-
-                                                headers: {
-                                                    "Content-Type":
-                                                        "application/json",
-
-                                                    Authorization:
-                                                        `Bearer ${staffToken}`
-                                                }
-                                            }
-                                        );
+                                    const response = await api.patch(
+                                        `/delivery-assignments/deliver/${order.assignment_id}`,
+                                        undefined,
+                                        {
+                                            headers: {
+                                                "Content-Type": "application/json",
+                                                Accept: "*/*",
+                                                Authorization: `Bearer ${staffToken}`
+                                            },
+                                            validateStatus: () => true,
+                                            transformResponse: [(data) => data]
+                                        }
+                                    );
 
 
-                                    const data =
-                                        await response.json();
+                                    const data = JSON.parse(response.data);
 
 
                                     console.log(
@@ -3846,7 +3758,7 @@ const logout = () => {
                                     );
 
 
-                                    if (!response.ok) {
+                                    if (response.status < 200 || response.status >= 300) {
 
                                         alert(
                                             data.message ||
@@ -3981,31 +3893,28 @@ const logout = () => {
                         return;
                     }
 
-                    const response =
-                        await fetch(
-                            `${API_URL}/delivery-assignments/settle-cashback/${order.assignment_id}`,
-                            {
-                                method: "PATCH",
+                    const response = await api.patch(
+                        `/delivery-assignments/settle-cashback/${order.assignment_id}`,
+                        undefined,
+                        {
+                            headers: {
+                                "Content-Type": "application/json",
+                                Accept: "*/*",
+                                Authorization: `Bearer ${staffToken}`
+                            },
+                            validateStatus: () => true,
+                            transformResponse: [(data) => data]
+                        }
+                    );
 
-                                headers: {
-                                    "Content-Type":
-                                        "application/json",
-
-                                    Authorization:
-                                        `Bearer ${staffToken}`
-                                }
-                            }
-                        );
-
-                    const data =
-                        await response.json();
+                    const data = JSON.parse(response.data);
 
                     console.log(
                         "💰 CASHBACK SETTLEMENT RESPONSE =",
                         data
                     );
 
-                    if (!response.ok) {
+                    if (response.status < 200 || response.status >= 300) {
 
                         alert(
                             data.message ||
@@ -4119,32 +4028,24 @@ const logout = () => {
                         }
 
 
-                        const response =
-                            await fetch(
-                                `${API_URL}/delivery-assignments/settle-cancellation-cash`,
-                                {
-                                    method:
-                                        "PATCH",
-
-                                    headers: {
-                                        "Content-Type":
-                                            "application/json",
-
-                                        Authorization:
-                                            `Bearer ${staffToken}`
-                                    },
-
-                                    body:
-                                        JSON.stringify({
-                                            customer_id:
-                                                order.customer_id
-                                        })
-                                }
-                            );
+                        const response = await api.patch(
+                            '/delivery-assignments/settle-cancellation-cash',
+                            {
+                                customer_id: order.customer_id
+                            },
+                            {
+                                headers: {
+                                    "Content-Type": "application/json",
+                                    Accept: "*/*",
+                                    Authorization: `Bearer ${staffToken}`
+                                },
+                                validateStatus: () => true,
+                                transformResponse: [(data) => data]
+                            }
+                        );
 
 
-                        const data =
-                            await response.json();
+                        const data = JSON.parse(response.data);
 
 
                         console.log(
@@ -4153,7 +4054,7 @@ const logout = () => {
                         );
 
 
-                        if (!response.ok) {
+                        if (response.status < 200 || response.status >= 300) {
 
                             alert(
                                 data.message ||
@@ -4259,4 +4160,4 @@ const logout = () => {
 
 }
 
-export default StaffDashboard;                        
+export default StaffDashboard;

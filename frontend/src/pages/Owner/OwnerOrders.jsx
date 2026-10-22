@@ -4,7 +4,7 @@ import React, {
     useRef
 } from "react";
 
-import axios from "axios";
+import api from "../../Services/api.js";
 
 import "./OwnerOrders.css";
 
@@ -40,9 +40,9 @@ function OwnerOrders() {
 
         try {
 
-            const response = await axios.get(
-                "https://dokaansathi.onrender.com/api/orders"
-            );
+            const response = await api.get('/orders', {
+                headers: { "Content-Type": null },
+            });
 
 
             const newOrders =
@@ -200,14 +200,9 @@ function OwnerOrders() {
 
         try {
 
-            const response = await axios.post(
-
-                `https://dokaansathi.onrender.com/api/orders/${endpoint}`,
-
-                {
-                    order_id: order_id
-                }
-
+            const response = await api.post(
+                `/orders/${endpoint}`,
+                { order_id }
             );
 
 
@@ -268,9 +263,9 @@ function OwnerOrders() {
 
         try {
 
-            const response = await axios.put(
-                "https://dokaansathi.onrender.com/api/orders/accept-all"
-            );
+            const response = await api.put('/orders/accept-all', undefined, {
+                headers: { "Content-Type": null },
+            });
 
 
             // =================================
