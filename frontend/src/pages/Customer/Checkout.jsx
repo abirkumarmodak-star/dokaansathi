@@ -1333,9 +1333,9 @@ localStorage.setItem(
     ⚠️ Important Order Instructions
 
     <p style={{ marginBottom: 0 }}>
-        After clicking Confirm Order, please send your order details
+        Before clicking Confirm Order, please send your order details
         through the Order Details on WhatsApp button. Otherwise, your
-        order may not reach the shop owner for confirmation.
+        order may not reach the shop owner for confirmation.so pleasa clicks order details on watsapp button before clicking confirm order button.
     </p>
 </div>
 
