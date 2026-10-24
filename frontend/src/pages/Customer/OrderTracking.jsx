@@ -1,14 +1,23 @@
 import { useEffect, useState, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
+import api from "../../Services/api.js";
 import "./OrderTracking.css";
 
 function OrderTracking() {
-    const navigate = useNavigate();
-
-    const [token, setToken] = useState("");
+    const [token, setToken] = useState(() => localStorage.getItem("tokenNumber") || "");
     const [order, setOrder] = useState(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
+
+    const getTrackingCapability = (orderToken) => {
+        try {
+            const capabilities = JSON.parse(
+                localStorage.getItem("orderTrackingCapabilities") || "{}"
+            );
+            return capabilities[orderToken] || "";
+        } catch {
+            return "";
+        }
+    };
 
     const statusSteps = [
         { name: "Pending", label: "📝 Order Placed" },
@@ -24,23 +33,41 @@ function OrderTracking() {
     const trackOrder = useCallback(async () => {
         if (!token) return;
 
+        const trackingCapability = getTrackingCapability(token);
+        if (!trackingCapability) {
+            setOrder(null);
+            setError("Order unavailable. Open tracking on the device used to place this order.");
+            return;
+        }
+
+        setLoading(true);
         try {
-            const response = await fetch(
-                `https://dokaansathi.onrender.com/api/orders/token/${token}`
+            const response = await api.get(
+                `/orders/token/${token}`,
+                {
+                    headers: {
+                        "Content-Type": null,
+                        Accept: "*/*",
+                        "X-Order-Tracking-Capability": trackingCapability
+                    },
+                    validateStatus: () => true,
+                    transformResponse: [(data) => data]
+                }
             );
 
-            const data = await response.json();
+            const data = JSON.parse(response.data);
 
-            if (!response.ok) {
+            if (response.status < 200 || response.status >= 300) {
                 throw new Error(data.message || "Failed to load order");
             }
 
             setOrder(data.order);
             setError("");
 
-        } catch (err) {
-            console.log("TRACK ORDER ERROR:", err);
-            setError(err.message || "Failed to load order");
+        } catch {
+            setError("Order unavailable");
+        } finally {
+            setLoading(false);
         }
     }, [token]);
 
@@ -69,34 +96,59 @@ function OrderTracking() {
     // ==========================================
     const cancelOrder = async () => {
         if (!order) return;
+        const trackingCapability = getTrackingCapability(token);
+        if (!trackingCapability) {
+            setError("Order unavailable");
+            return;
+        }
 
         try {
-            const response = await fetch(
-              "https://dokaansathi.onrender.com/api/orders/cancel",
+            const response = await api.put(
+                "/orders/cancel",
+                JSON.stringify({ order_id: order.id }),
                 {
-                    method: "PUT",
                     headers: {
-                        "Content-Type": "application/json"
+                        "Content-Type": "application/json",
+                        Accept: "*/*",
+                        "X-Order-Tracking-Capability": trackingCapability
                     },
-                    body: JSON.stringify({
-                        order_id: order.id
-                    })
+                    validateStatus: () => true,
+                    transformResponse: [(data) => data]
                 }
             );
 
-            const data = await response.json();
+            const data = JSON.parse(response.data);
 
             alert(data.message);
 
-            if (response.ok) {
+            if (response.status >= 200 && response.status < 300) {
                 trackOrder();
             }
 
-        } catch (err) {
-            console.log(err);
+        } catch {
             alert("Cancel Failed");
         }
     };
+
+const contactOwnerWhatsApp = () => {
+    const ownerNumber = "918670334666";
+
+    const message = [
+        "Hello Jana Food Hub,",
+        "",
+        "I need help with cancelling my order.",
+        `Order Token: ${order?.token_number || token || "Not available"}`,
+        `Order ID: ${order?.id || "Not available"}`,
+        `Order Status: ${order?.order_status || "Not available"}`,
+        "",
+        "Please help me with the cancellation."
+    ].join("\n");
+
+    const url =
+        `https://wa.me/${ownerNumber}?text=${encodeURIComponent(message)}`;
+
+    window.open(url, "_blank", "noopener,noreferrer");
+};
 
     // ==========================================
     // DELIVERY STATUS
@@ -265,6 +317,7 @@ function OrderTracking() {
                    {/* ==================================
     CANCEL
 ================================== */}
+
 {(
     // ==========================================
     // NORMAL ORDER
@@ -297,8 +350,43 @@ function OrderTracking() {
         <button onClick={cancelOrder}>
             ❌ Cancel Order
         </button>
+
+        <button
+            type="button"
+            onClick={contactOwnerWhatsApp}
+            style={{
+                marginLeft: "10px",
+                padding: "10px 14px",
+                background: "#25D366",
+                color: "#fff",
+                border: "none",
+                borderRadius: "8px",
+                cursor: "pointer",
+                fontWeight: "bold"
+            }}
+        >
+            💬 WhatsApp Owner
+        </button>
+
+        <p style={{ marginTop: "10px", color: "#9a3412" }}>
+            অর্ডার বাতিল করতে দোকানের মালিককে ফোন বা WhatsApp-এ যোগাযোগ করুন।
+        </p>
+
+        <p>
+            Owner WhatsApp:{" "}
+            <a
+                href="https://wa.me/918670334666"
+                target="_blank"
+                rel="noopener noreferrer"
+            >
+                +91 86703 34666
+            </a>
+        </p>
     </div>
 )}
+
+
+
                 </div>
             )}
 

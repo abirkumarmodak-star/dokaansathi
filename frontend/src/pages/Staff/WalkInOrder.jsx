@@ -1,5 +1,11 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import api from "../../Services/api";
+
+const FETCH_JSON_CONFIG = {
+    validateStatus: () => true,
+    transformResponse: [(data) => data],
+};
 
 function WalkInCustomer() {
 
@@ -28,11 +34,15 @@ function WalkInCustomer() {
 
         try {
 
-            const response = await fetch(
-                "https://dokaansathi.onrender.com/api/menu"
+            const response = await api.get(
+                "/menu",
+                {
+                    ...FETCH_JSON_CONFIG,
+                    headers: { "Content-Type": null, Accept: "*/*" },
+                }
             );
 
-            const data = await response.json();
+            const data = JSON.parse(response.data);
 
             console.log("MENU:", data);
 
@@ -188,21 +198,9 @@ function WalkInCustomer() {
             // STEP 1: CREATE WALK-IN CUSTOMER
             // =====================================
 
-            const customerResponse = await fetch(
-
-                "https://dokaansathi.onrender.com/api/customers",
-
-                {
-
-                    method: "POST",
-
-                    headers: {
-
-                        "Content-Type": "application/json"
-
-                    },
-
-                    body: JSON.stringify({
+            const customerResponse = await api.post(
+                "/customers",
+                JSON.stringify({
 
                         name: customerName,
 
@@ -214,21 +212,19 @@ function WalkInCustomer() {
 
                         tableNumber: null
 
-                    })
-
+                    }),
+                {
+                    ...FETCH_JSON_CONFIG,
+                    headers: {
+                        "Content-Type": "application/json",
+                        Accept: "*/*"
+                    },
                 }
-
             );
 
-            const customerData =
-                await customerResponse.json();
+            const customerData = JSON.parse(customerResponse.data);
 
-            console.log(
-                "CUSTOMER RESPONSE:",
-                customerData
-            );
-
-            if (!customerResponse.ok) {
+            if (customerResponse.status < 200 || customerResponse.status >= 300) {
 
                 throw new Error(
 
@@ -268,22 +264,9 @@ function WalkInCustomer() {
             // STEP 3: CREATE ORDER
             // =====================================
 
-            const orderResponse = await fetch(
-
-                "https://dokaansathi.onrender.com/api/orders",
-
-                {
-
-                    method: "POST",
-
-                    headers: {
-
-                        "Content-Type":
-                            "application/json"
-
-                    },
-
-                    body: JSON.stringify({
+            const orderResponse = await api.post(
+                "/orders",
+                JSON.stringify({
 
                         customer_id:
                             customerId,
@@ -303,21 +286,19 @@ function WalkInCustomer() {
                         total_amount:
                             total
 
-                    })
-
+                    }),
+                {
+                    ...FETCH_JSON_CONFIG,
+                    headers: {
+                        "Content-Type": "application/json",
+                        Accept: "*/*"
+                    },
                 }
-
             );
 
-            const orderData =
-                await orderResponse.json();
+            const orderData = JSON.parse(orderResponse.data);
 
-            console.log(
-                "ORDER RESPONSE:",
-                orderData
-            );
-
-            if (!orderResponse.ok) {
+            if (orderResponse.status < 200 || orderResponse.status >= 300) {
 
                 throw new Error(
 

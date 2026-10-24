@@ -1,8 +1,14 @@
 import { useEffect, useState } from "react";
+import api from "../../Services/api";
 
 import Sidebar from "../../components/layout/Sidebar";
 
 import "./settings.css";
+
+const FETCH_JSON_CONFIG = {
+    validateStatus: () => true,
+    transformResponse: [(data) => data],
+};
 
 function Settings() {
 
@@ -22,9 +28,16 @@ function Settings() {
 
     useEffect(() => {
 
-        fetch("https://dokaansathi.onrender.com/api/shop-settings")
+        api.get("/shop-settings", {
+            ...FETCH_JSON_CONFIG,
+            headers: {
+                "Content-Type": null,
+                Accept: "*/*",
+                Authorization: `Bearer ${localStorage.getItem("token")}`
+            },
+        })
 
-            .then((res) => res.json())
+            .then((res) => JSON.parse(res.data))
 
             .then((data) => {
 
@@ -54,27 +67,20 @@ function Settings() {
 
     const saveSettings = async () => {
 
-        const response = await fetch(
-
-            "https://dokaansathi.onrender.com/api/shop-settings",
-
+        const response = await api.put(
+            "/shop-settings",
+            JSON.stringify(settings),
             {
-
-                method: "PUT",
-
+                ...FETCH_JSON_CONFIG,
                 headers: {
-
-                    "Content-Type": "application/json"
-
+                    "Content-Type": "application/json",
+                    Accept: "*/*",
+                    Authorization: `Bearer ${localStorage.getItem("token")}`
                 },
-
-                body: JSON.stringify(settings)
-
             }
-
         );
 
-        const result = await response.json();
+        const result = JSON.parse(response.data);
 
         alert(result.message);
 

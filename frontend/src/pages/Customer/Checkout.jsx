@@ -1,8 +1,7 @@
 import { useEffect, useState } from "react";
+import api from "../../Services/api.js";
 import { useNavigate } from "react-router-dom";
 import "./Checkout.css";
-
-const API_BASE_URL = "https://dokaansathi.onrender.com/api";
 
 function Checkout() {
     const navigate = useNavigate();
@@ -41,7 +40,7 @@ const [deliveryLandmarkName, setDeliveryLandmarkName] = useState("");
 
     const [paymentMethod, setPaymentMethod] = useState("Cash");
     const [paymentDone, setPaymentDone] = useState(false);
-
+const [whatsappConfirmed, setWhatsappConfirmed] = useState(false);
     // ======================================================
     // LOAD CART
     // ======================================================
@@ -297,6 +296,59 @@ const total =
     // UPI PAYMENT
     // ======================================================
 
+const OWNER_WHATSAPP = "918670334666";
+
+const openOwnerWhatsApp = () => {
+    if (cartItems.length === 0) {
+        alert("Your cart is empty.");
+        return;
+    }
+
+    if (!customerName.trim() || !phone.trim() || !address.trim()) {
+        alert("Please enter your name, phone number and delivery address first.");
+        return;
+    }
+
+    const landmark =
+        deliveryLandmarkType && deliveryLandmarkName.trim()
+            ? `${deliveryLandmarkType}: ${deliveryLandmarkName.trim()}`
+            : "Not provided";
+
+    const itemsText = cartItems
+        .map((item) =>
+            `• ${item.name} × ${item.quantity} = ₹${(
+                Number(item.price || 0) *
+                Number(item.quantity || 0)
+            ).toFixed(2)}`
+        )
+        .join("\n");
+
+    const message = [
+        "🛒 *DokaanSathi — Order Enquiry*",
+        "",
+        `Customer: ${customerName.trim()}`,
+        `Phone: ${phone.trim()}`,
+        `Address: ${address.trim()}`,
+        `Landmark: ${landmark}`,
+        `Payment: ${paymentMethod}`,
+        "",
+        "*Order Items:*",
+        itemsText,
+        "",
+        `Food Total: ₹${foodTotal.toFixed(2)}`,
+        `Delivery Fee: ₹${deliveryFee.toFixed(2)}`,
+        `Total: ₹${total.toFixed(2)}`,
+        `Special Instruction: ${instruction.trim() || "None"}`,
+        "",
+        "Please confirm my order."
+    ].join("\n");
+
+    const whatsappUrl =
+        `https://wa.me/${OWNER_WHATSAPP}?text=${encodeURIComponent(message)}`;
+
+    window.open(whatsappUrl, "_blank", "noopener,noreferrer");
+};
+
     const payNow = () => {
         const upiId =
             "MAB.037135003970219@AXISBANK";
@@ -331,6 +383,7 @@ console.log(
         id: item.id
     }))
 );
+
     const confirmOrder = async () => {
         const deliveryLandmark =
     deliveryLandmarkType &&
@@ -392,16 +445,10 @@ if (!deliveryLandmarkName.trim()) {
     alert("Please enter the landmark name.");
     return;
 }
-
-        console.log("Customer Name:", customerName);
-        console.log("Phone:", phone);
-        console.log("Order Type:", orderType);
-        console.log("Address:", address);
         console.log(
             "Landmark:",
             deliveryLandmark
         );
-        console.log("Food Total:", foodTotal);
         console.log(
             "Delivery Fee:",
             deliveryFee
@@ -428,15 +475,9 @@ if (!deliveryLandmarkName.trim()) {
                 );
 
                 for (const item of cartItems) {
-                    const response = await fetch(
-                        `${API_BASE_URL}/order-items/add`,
-                        {
-                            method: "POST",
-                            headers: {
-                                "Content-Type":
-                                    "application/json",
-                            },
-                            body: JSON.stringify({
+                    const response = await api.post(
+                        "/order-items/add",
+                        JSON.stringify({
                                 order_id:
                                     existingOrderId,
                                 menu_id:
@@ -446,13 +487,19 @@ if (!deliveryLandmarkName.trim()) {
                                 price:
                                     item.price,
                             }),
+                        {
+                            headers: {
+                                "Content-Type": "application/json",
+                                Accept: "*/*"
+                            },
+                            validateStatus: () => true,
+                            transformResponse: [(data) => data]
                         }
                     );
 
-                    const data =
-                        await response.json();
+                    const data = JSON.parse(response.data);
 
-                    if (!response.ok) {
+                    if (response.status < 200 || response.status >= 300) {
                         alert(
                             data.message ||
                                 "Failed to add item."
@@ -483,7 +530,7 @@ if (!deliveryLandmarkName.trim()) {
                     }
                 );
 
-                return;
+                return true;
             }
 
             // ==================================================
@@ -513,35 +560,27 @@ if (!deliveryLandmarkName.trim()) {
                 )
             );
 
-            const customerResponse =
-                await fetch(
-                    `${API_BASE_URL}/customers`,
-                    {
-                        method: "POST",
-                        headers: {
-                            "Content-Type":
-                                "application/json",
-                        },
-                        body: JSON.stringify(
-                            customerPayload
-                        ),
-                    }
-                );
-
-            const customerData =
-                await customerResponse.json();
-
-            console.log(
-                "========== CUSTOMER RESPONSE =========="
+            const customerResponse = await api.post(
+                "/customers",
+                JSON.stringify(customerPayload),
+                {
+                    headers: {
+                        "Content-Type": "application/json",
+                        Accept: "*/*"
+                    },
+                    validateStatus: () => true,
+                    transformResponse: [(data) => data]
+                }
             );
 
-            console.log(customerData);
+            const customerData = JSON.parse(customerResponse.data);
+
             console.log(
                 "Status:",
                 customerResponse.status
             );
 
-            if (!customerResponse.ok) {
+            if (customerResponse.status < 200 || customerResponse.status >= 300) {
                 alert(
                     customerData.message ||
                         "Customer creation failed."
@@ -658,31 +697,26 @@ items: cartItems.map((item) => {
             // CREATE ORDER
             // ==================================================
 
-            const orderResponse =
-                await fetch(
-                    `${API_BASE_URL}/orders`,
-                    {
-                        method: "POST",
-                        headers: {
-                            "Content-Type":
-                                "application/json",
-                        },
-                        body: JSON.stringify(
-                            orderPayload
-                        ),
-                    }
-                );
+            const orderResponse = await api.post(
+                "/orders",
+                JSON.stringify(orderPayload),
+                {
+                    headers: {
+                        "Content-Type": "application/json",
+                        Accept: "*/*"
+                    },
+                    validateStatus: () => true,
+                    transformResponse: [(data) => data]
+                }
+            );
 
-            const orderData =
-                await orderResponse.json();
+            const orderData = JSON.parse(orderResponse.data);
 
             console.log(
                 "========== ORDER RESPONSE =========="
             );
 
-            console.log(orderData);
-
-            if (!orderResponse.ok) {
+            if (orderResponse.status < 200 || orderResponse.status >= 300) {
                 alert(
                     orderData.message ||
                         "Order creation failed."
@@ -708,6 +742,17 @@ localStorage.setItem(
                 );
             }
 
+            if (orderData.tokenNumber && orderData.trackingCapability) {
+                const capabilities = JSON.parse(
+                    localStorage.getItem("orderTrackingCapabilities") || "{}"
+                );
+                capabilities[orderData.tokenNumber] = orderData.trackingCapability;
+                localStorage.setItem(
+                    "orderTrackingCapabilities",
+                    JSON.stringify(capabilities)
+                );
+            }
+
             // ==================================================
             // CLEAR CART
             // ==================================================
@@ -719,6 +764,7 @@ localStorage.setItem(
             // ==================================================
 
             navigate("/order-success");
+            return true;
         } catch (error) {
             console.error(
                 "========== CHECKOUT ERROR =========="
@@ -1067,12 +1113,12 @@ localStorage.setItem(
 
                     <button
                         type="button"
-                        onClick={() => {
-                            setPaymentDone(
-                                true
-                            );
+                        onClick={async () => {
+                            const orderConfirmed = await confirmOrder();
 
-                            confirmOrder();
+                            if (orderConfirmed) {
+                                setPaymentDone(true);
+                            }
                         }}
                         disabled={
                             cartItems.length ===
@@ -1271,6 +1317,28 @@ localStorage.setItem(
                 </h2>
             </div>
 
+<div
+    style={{
+        marginTop: "15px",
+        marginBottom: "12px",
+        padding: "14px",
+        background: "#fff3cd",
+        border: "1px solid #ffcc66",
+        borderRadius: "10px",
+        color: "#7a4b00",
+        fontWeight: "bold",
+        lineHeight: "1.6",
+    }}
+>
+    ⚠️ Important Order Instructions
+
+    <p style={{ marginBottom: 0 }}>
+        After clicking Confirm Order, please send your order details
+        through the Order Details on WhatsApp button. Otherwise, your
+        order may not reach the shop owner for confirmation.
+    </p>
+</div>
+
             {/* ==================================================
                 CONFIRM ORDER
             ================================================== */}
@@ -1290,6 +1358,34 @@ localStorage.setItem(
                     ✅ Confirm Order
                 </button>
             )}
+
+<button
+    type="button"
+    onClick={openOwnerWhatsApp}
+    disabled={cartItems.length === 0}
+    style={{
+        marginTop: "12px",
+        marginLeft: "8px",
+        padding: "12px 18px",
+        background: "#25D366",
+        color: "#fff",
+        border: "none",
+        borderRadius: "8px",
+        fontWeight: "bold",
+        cursor: "pointer"
+    }}
+>
+    💬 Order Details on WhatsApp
+</button>
+
+<label style={{ display: "block", marginTop: "12px", marginBottom: "12px" }}>
+    <input
+        type="checkbox"
+        checked={whatsappConfirmed}
+        onChange={(e) => setWhatsappConfirmed(e.target.checked)}
+    />
+    {" "}I have sent my order details to the owner on WhatsApp.
+</label>
 
             {/* ==================================================
                 ADD MORE FOODS

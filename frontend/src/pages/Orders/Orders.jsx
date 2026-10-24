@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import apiClient from "../../Services/api";
 
 import "./Orders.css";
 
@@ -33,17 +34,22 @@ function Orders() {
 
         try {
 
-            const response = await fetch(
-                "https://dokaansathi.onrender.com/api/orders"
+            const response = await apiClient.get(
+                "/orders",
+                {
+                    validateStatus: () => true,
+                    transformResponse: [(data) => data],
+                    headers: { "Content-Type": null, Accept: "*/*" },
+                }
             );
 
-            if (!response.ok) {
+            if (response.status < 200 || response.status >= 300) {
 
                 throw new Error("Failed to fetch orders");
 
             }
 
-         const data = await response.json();
+         const data = JSON.parse(response.data);
 
 console.log("ORDERS API RESPONSE:", data);
 
@@ -132,33 +138,26 @@ const formattedOrders = orderList.map((order) => ({
 
             }
 
-            const response = await fetch(
-
-                `https://dokaansathi.onrender.com/api/orders/${api}`,
-
-                {
-
-                    method: "POST",
-
-                    headers: {
-
-                        "Content-Type": "application/json"
-
-                    },
-
-                    body: JSON.stringify({
+            const response = await apiClient.post(
+                `/orders/${api}`,
+                JSON.stringify({
 
                         order_id: id
 
-                    })
-
+                    }),
+                {
+                    validateStatus: () => true,
+                    transformResponse: [(data) => data],
+                    headers: {
+                        "Content-Type": "application/json",
+                        Accept: "*/*"
+                    },
                 }
-
             );
 
-            const data = await response.json();
+            const data = JSON.parse(response.data);
 
-            if (!response.ok) {
+            if (response.status < 200 || response.status >= 300) {
 
                 alert(data.message);
 

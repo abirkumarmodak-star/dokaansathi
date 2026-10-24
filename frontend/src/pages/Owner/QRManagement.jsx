@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import QRCode from "react-qr-code";
+import api from "../../Services/api";
 function QRManagement() {
 
     const [tables, setTables] = useState([]);
@@ -8,9 +9,13 @@ function QRManagement() {
 
     useEffect(() => {
 
-        fetch("https://dokaansathi.onrender.com/api/tables")
+        api.get("/tables", {
+            validateStatus: () => true,
+            transformResponse: [(data) => data],
+            headers: { "Content-Type": null, Accept: "*/*" },
+        })
 
-            .then((res) => res.json())
+            .then((res) => JSON.parse(res.data))
 
             .then((data) => {
 

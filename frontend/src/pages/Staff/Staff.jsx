@@ -1,11 +1,17 @@
 
 import { useEffect, useState } from "react";
+import api from "../../Services/api.js";
 import Sidebar from "../../components/layout/Sidebar";
 import "./staff.css";
 
 function Staff() {
 
     const [staff, setStaff] = useState([]);
+    const [editingPhoneId, setEditingPhoneId] = useState(null);
+const [editingPhone, setEditingPhone] = useState("");
+
+const [resetPasswordId, setResetPasswordId] = useState(null);
+const [newStaffPassword, setNewStaffPassword] = useState("");
 const [editingStaffId, setEditingStaffId] = useState(null);
 
 const [editingHours, setEditingHours] = useState({
@@ -53,26 +59,21 @@ const [editingHours, setEditingHours] = useState({
 
                 return;
             }
-console.log("========== STAFF GET DEBUG ==========");
-console.log("TOKEN =", localStorage.getItem("token"));
-console.log("TOKEN LENGTH =", localStorage.getItem("token")?.length);
-console.log("=====================================");
+const response = await api.get(
+                "/staff",
+                {
+                    headers: {
+                        "Content-Type": null,
+                        Accept: "*/*",
+                        Authorization: `Bearer ${localStorage.getItem("token")}`
+                    },
+                    validateStatus: () => true,
+                    transformResponse: [(data) => data]
+                }
+            );
 
-            const response = await fetch("https://dokaansathi.onrender.com/api/staff", {
-    headers: {
-        Authorization: `Bearer ${localStorage.getItem("token")}`
-    }
-})
-         
-
-
-            const data = await response.json();
-
-
-            console.log("STAFF API RESPONSE =", data);
-
-
-            if (!response.ok) {
+            const data = JSON.parse(response.data);
+            if (response.status < 200 || response.status >= 300) {
 
                 console.log(
                     "Staff Load Error:",
@@ -180,26 +181,28 @@ const saveWorkingHours = async (staffId) => {
         console.log("START =", editingHours.work_start_time);
         console.log("END =", editingHours.work_end_time);
 
-        const response = await fetch(
-            `https://dokaansathi.onrender.com/api/staff/${staffId}/work-hours`,
+        const response = await api.patch(
+            `/staff/${staffId}/work-hours`,
             {
-                method: "PATCH",
+                work_start_time: editingHours.work_start_time,
+                work_end_time: editingHours.work_end_time
+            },
+            {
                 headers: {
                     "Content-Type": "application/json",
+                    Accept: "*/*",
                     "Authorization": `Bearer ${token}`
                 },
-                body: JSON.stringify({
-                    work_start_time: editingHours.work_start_time,
-                    work_end_time: editingHours.work_end_time
-                })
+                validateStatus: () => true,
+                transformResponse: [(data) => data]
             }
         );
 
-        const result = await response.json();
+        const result = JSON.parse(response.data);
 
         console.log("UPDATE WORKING HOURS RESPONSE =", result);
 
-        if (!response.ok) {
+        if (response.status < 200 || response.status >= 300) {
             alert(result.message || "Failed to update working hours");
             return;
         }
@@ -232,7 +235,7 @@ const saveWorkingHours = async (staffId) => {
     // ======================================================
 
     const addStaff = async () => {
- console.log("FORM BEFORE CREATE =", form);
+
         if (
             form.name === "" ||
             form.phone === "" ||
@@ -257,26 +260,22 @@ const saveWorkingHours = async (staffId) => {
             }
 
 
-            const response = await fetch(
-
-                 "https://dokaansathi.onrender.com/api/staff",
-
+            const response = await api.post(
+                "/staff",
+                form,
                 {
-                    method: "POST",
-
                     headers: {
-
                         "Content-Type": "application/json",
-
+                        Accept: "*/*",
                         "Authorization": `Bearer ${token}`
                     },
-
-                    body: JSON.stringify(form)
+                    validateStatus: () => true,
+                    transformResponse: [(data) => data]
                 }
             );
 
 
-            const result = await response.json();
+            const result = JSON.parse(response.data);
 
 
             console.log(
@@ -291,7 +290,7 @@ const saveWorkingHours = async (staffId) => {
             );
 
 
-            if (!response.ok) {
+            if (response.status < 200 || response.status >= 300) {
 
                 return;
             }
@@ -332,6 +331,88 @@ const saveWorkingHours = async (staffId) => {
     // ======================================================
     // UI
     // ======================================================
+
+const saveStaffPhone = async (staffId) => {
+    const phone = editingPhone.trim();
+
+    if (!/^[0-9]{10,15}$/.test(phone)) {
+        alert("Enter a valid phone number (10–15 digits)");
+        return;
+    }
+
+    try {
+        const response = await api.patch(
+            `/staff/${staffId}/phone`,
+            { phone },
+            {
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${getToken()}`
+                },
+                validateStatus: () => true,
+                transformResponse: [(data) => data]
+            }
+        );
+
+        const data = JSON.parse(response.data);
+
+        if (response.status < 200 || response.status >= 300) {
+            alert(data.message || "Phone update failed");
+            return;
+        }
+
+        alert("Phone number updated successfully");
+        setEditingPhoneId(null);
+        setEditingPhone("");
+        await loadStaff();
+    } catch {
+
+        alert("Could not update phone number");
+    }
+};
+
+const resetStaffPassword = async (staffId) => {
+    if (newStaffPassword.length < 6) {
+        alert("Password must be at least 6 characters");
+        return;
+    }
+
+    if (!window.confirm("Reset this staff member's password?")) {
+        return;
+    }
+
+    try {
+        const response = await api.post(
+            "/staff/reset-password",
+            {
+                staffId,
+                newPassword: newStaffPassword
+            },
+            {
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${getToken()}`
+                },
+                validateStatus: () => true,
+                transformResponse: [(data) => data]
+            }
+        );
+
+        const data = JSON.parse(response.data);
+
+        if (response.status < 200 || response.status >= 300) {
+            alert(data.message || "Password reset failed");
+            return;
+        }
+
+        alert("Password reset successfully");
+        setResetPasswordId(null);
+        setNewStaffPassword("");
+    } catch {
+
+        alert("Could not reset password");
+    }
+};
 
     return (
 
@@ -457,7 +538,7 @@ const saveWorkingHours = async (staffId) => {
                             <th>Role</th>
 <th>Working Hours</th>
                             <th>Status</th>
-
+<th>Actions</th>
                         </tr>
 
                     </thead>
@@ -560,6 +641,71 @@ const saveWorkingHours = async (staffId) => {
     )}
 </td>
                                     <td>{item.status}</td>
+
+<td>
+    {editingPhoneId === item.id ? (
+        <div>
+            <input
+                type="tel"
+                value={editingPhone}
+                onChange={(e) => setEditingPhone(e.target.value)}
+                placeholder="New phone number"
+            />
+
+            <button onClick={() => saveStaffPhone(item.id)}>
+                Save Phone
+            </button>
+
+            <button onClick={() => {
+                setEditingPhoneId(null);
+                setEditingPhone("");
+            }}>
+                Cancel
+            </button>
+        </div>
+    ) : resetPasswordId === item.id ? (
+        <div>
+            <input
+                type="password"
+                value={newStaffPassword}
+                onChange={(e) => setNewStaffPassword(e.target.value)}
+                placeholder="New password"
+                autoComplete="new-password"
+            />
+
+            <button onClick={() => resetStaffPassword(item.id)}>
+                Save Password
+            </button>
+
+            <button onClick={() => {
+                setResetPasswordId(null);
+                setNewStaffPassword("");
+            }}>
+                Cancel
+            </button>
+        </div>
+    ) : (
+        <div>
+            <button onClick={() => {
+                setEditingPhoneId(item.id);
+                setEditingPhone(String(item.phone || ""));
+                setResetPasswordId(null);
+                setNewStaffPassword("");
+            }}>
+                Edit Phone
+            </button>
+
+            <button onClick={() => {
+                setResetPasswordId(item.id);
+                setNewStaffPassword("");
+                setEditingPhoneId(null);
+                setEditingPhone("");
+            }}>
+                Reset Password
+            </button>
+        </div>
+    )}
+</td>
 
                                 </tr>
 
