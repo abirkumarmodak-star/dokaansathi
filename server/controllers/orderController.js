@@ -1,4 +1,5 @@
 const db = require("../config/db");
+const crypto = require("crypto");
 const {
     sendPushToDeliveryBoy,
     sendPushToManagers
@@ -1079,7 +1080,8 @@ const actualPaymentMethod =
                 payment_method,
                 token_number,
                 distance_km,
-                distance_source
+                distance_source,
+                 tracking_capability_hash
             )
 
             VALUES
@@ -1098,11 +1100,16 @@ const actualPaymentMethod =
                 ?,
                 ?,
                 ?,
+                ?,
                 ?
             )
 
         `;
-
+const trackingCapability = crypto.randomBytes(32).toString("hex");
+const trackingCapabilityHash = crypto
+    .createHash("sha256")
+    .update(trackingCapability)
+    .digest("hex");
 
         const orderValues = [
 
@@ -1156,15 +1163,13 @@ actualPaymentMethod,
 
             distanceKm,
 
-            distanceSource
+            distanceSource,
+            trackingCapabilityHash
 
         ];
 
 
-        console.log(
-            "📝 ORDER VALUES =",
-            orderValues
-        );
+
 
 
         const orderResult =
@@ -1287,7 +1292,7 @@ orderId = Number(orderResult.insertId);
         // 15. NORMALIZE ITEMS
         // ==================================================
 
-  
+
 
 const normalizedItems = [];
 
@@ -3052,7 +3057,7 @@ catch (managerPushError) {
 
             message:
                 "Order created successfully",
-
+ trackingCapability: trackingCapability,
             order_id:
                 orderId,
 
@@ -3625,7 +3630,7 @@ exports.getPendingOrders = (req, res) => {
 
             s.shop_name,
             s.phone AS shop_phone,
-            
+
             s.latitude AS shop_latitude,
             s.longitude AS shop_longitude
 (
@@ -3786,7 +3791,41 @@ exports.getOrderByToken = (req, res) => {
 
             const order =
                 orders[0];
+const providedCapability = req.get(
+    "X-Order-Tracking-Capability"
+);
 
+if (
+    !providedCapability ||
+    !order.tracking_capability_hash
+) {
+    return res.status(403).json({
+        success: false,
+        message: "Invalid tracking authorization"
+    });
+}
+
+const providedHash = crypto
+    .createHash("sha256")
+    .update(providedCapability)
+    .digest();
+
+const storedHash = Buffer.from(
+    order.tracking_capability_hash,
+    "hex"
+);
+
+if (
+    storedHash.length !== providedHash.length ||
+    !crypto.timingSafeEqual(storedHash, providedHash)
+) {
+    return res.status(403).json({
+        success: false,
+        message: "Invalid tracking authorization"
+    });
+}
+
+delete order.tracking_capability_hash;
 
             const itemsSql = `
                 SELECT
@@ -4736,6 +4775,7 @@ exports.cancelOrder = (
             o.order_type,
             o.order_status,
             o.total_amount,
+            o.tracking_capability_hash,
             da.id AS assignment_id,
             da.delivery_boy_id,
             da.status AS delivery_status
@@ -4787,7 +4827,39 @@ exports.cancelOrder = (
             const order =
                 results[0];
 
+const providedCapability = req.get(
+    "X-Order-Tracking-Capability"
+);
 
+if (
+    !providedCapability ||
+    !order.tracking_capability_hash
+) {
+    return res.status(403).json({
+        success: false,
+        message: "Invalid tracking authorization"
+    });
+}
+
+const providedHash = crypto
+    .createHash("sha256")
+    .update(providedCapability)
+    .digest();
+
+const storedHash = Buffer.from(
+    order.tracking_capability_hash,
+    "hex"
+);
+
+if (
+    storedHash.length !== providedHash.length ||
+    !crypto.timingSafeEqual(storedHash, providedHash)
+) {
+    return res.status(403).json({
+        success: false,
+        message: "Invalid tracking authorization"
+    });
+}
             // ==================================================
             // DELIVERY ORDER
             // ==================================================
