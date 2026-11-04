@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import api from "../../Services/api.js";
 import "./StaffDashboard.css";
 import { useNavigate } from "react-router-dom";
@@ -54,10 +54,14 @@ const navigate = useNavigate();
     // ======================================================
 
     const [notificationEnabled, setNotificationEnabled] =
-        useState(
-            "Notification" in window &&
-            Notification.permission === "granted"
-        );
+        useState(false);
+
+    const pushSyncInProgress =
+        useRef(false);
+
+    const lastSyncedKey =
+        useRef(null);
+
 const [managerDeliveryAlert, setManagerDeliveryAlert] =
     useState(null);
     // ======================================================
@@ -386,7 +390,173 @@ const [managerDeliveryAlert, setManagerDeliveryAlert] =
 
 
     // ======================================================
-    // ENABLE NOTIFICATIONS
+    // SYNC PUSH SUBSCRIPTION WITH BACKEND
+    // ======================================================
+
+    const syncPushSubscription = useCallback(async (targetStaff, isManual = false) => {
+
+        try {
+
+            if (
+                !("serviceWorker" in navigator) ||
+                !("PushManager" in window) ||
+                !("Notification" in window)
+            ) {
+
+                console.log(
+                    "❌ This browser does not support Web Push"
+                );
+
+                setNotificationEnabled(false);
+                return false;
+            }
+
+            if (Notification.permission !== "granted") {
+                setNotificationEnabled(false);
+                return false;
+            }
+
+            const currentStaff = targetStaff || (() => {
+                try {
+                    const saved =
+                        localStorage.getItem("staffUser") ||
+                        localStorage.getItem("staff");
+                    return saved ? JSON.parse(saved) : null;
+                } catch {
+                    return null;
+                }
+            })();
+
+            if (!currentStaff?.id) {
+                console.log(
+                    "❌ Staff ID not available for push subscription"
+                );
+                setNotificationEnabled(false);
+                return false;
+            }
+
+            if (pushSyncInProgress.current) {
+                return false;
+            }
+
+            pushSyncInProgress.current = true;
+
+            await navigator.serviceWorker.register(
+                "/service-worker.js"
+            );
+
+            const registration =
+                await navigator.serviceWorker.ready;
+
+            let subscription =
+                await registration
+                    .pushManager
+                    .getSubscription();
+
+            if (!subscription) {
+
+                const vapidKey =
+                    import.meta.env.VITE_VAPID_PUBLIC_KEY;
+
+                if (!vapidKey) {
+                    console.error(
+                        "❌ VITE_VAPID_PUBLIC_KEY is not defined"
+                    );
+                    setNotificationEnabled(false);
+                    return false;
+                }
+
+                subscription =
+                    await registration
+                        .pushManager
+                        .subscribe(
+                            {
+                                userVisibleOnly:
+                                    true,
+
+                                applicationServerKey:
+                                    urlBase64ToUint8Array(
+                                        vapidKey
+                                    )
+                            }
+                        );
+
+            }
+
+            const syncKey = `${currentStaff.id}:${subscription?.endpoint}`;
+
+            if (!isManual && lastSyncedKey.current === syncKey) {
+                setNotificationEnabled(true);
+                return true;
+            }
+
+            const token = localStorage.getItem("staffToken");
+
+            const response = await api.post(
+                '/push/subscribe',
+                {
+                    staff_id: currentStaff.id,
+                    subscription: subscription.toJSON()
+                },
+                {
+                    headers: {
+                        "Content-Type": "application/json",
+                        Accept: "*/*",
+                        ...(token ? { Authorization: `Bearer ${token}` } : {})
+                    },
+                    validateStatus: () => true,
+                    transformResponse: [(data) => data]
+                }
+            );
+
+            let data = response.data;
+            if (typeof data === "string") {
+                try {
+                    data = JSON.parse(data);
+                } catch {
+                    data = {};
+                }
+            }
+
+            console.log(
+                "🔔 PUSH SUBSCRIPTION RESPONSE =",
+                data
+            );
+
+            if (
+                response.status >= 200 &&
+                response.status < 300 &&
+                data?.success
+            ) {
+                lastSyncedKey.current = syncKey;
+                setNotificationEnabled(true);
+                return true;
+            } else {
+                console.warn(
+                    "⚠️ Backend failed to save push subscription:",
+                    data?.message
+                );
+                setNotificationEnabled(false);
+                return false;
+            }
+
+        } catch (error) {
+
+            console.error(
+                "❌ PUSH SUBSCRIPTION ERROR:",
+                error
+            );
+            setNotificationEnabled(false);
+            return false;
+
+        } finally {
+            pushSyncInProgress.current = false;
+        }
+
+    }, []);
+
+    // ======================================================
+    // ENABLE NOTIFICATIONS (USER INITIATED)
     // ======================================================
 
     const enableNotifications = async () => {
@@ -451,16 +621,6 @@ const [managerDeliveryAlert, setManagerDeliveryAlert] =
 
                 }
 
-                setNotificationEnabled(
-                    true
-                );
-
-                // ==========================================
-                // PUSH SUBSCRIPTION
-                // ==========================================
-
-                await subscribeToPushNotifications();
-
                 // ==========================================
                 // PRELOAD / UNLOCK AUDIO FILE
                 // ==========================================
@@ -495,28 +655,43 @@ const [managerDeliveryAlert, setManagerDeliveryAlert] =
                 }
 
                 // ==========================================
-                // TEST NOTIFICATION
+                // PUSH SUBSCRIPTION
                 // ==========================================
 
-                const notification =
-                    new Notification(
-                        "🔔 Dokaansathi Notifications Enabled",
-                        {
-                            body:
-                                "You will receive new order alerts here.",
-                            icon: "/favicon.svg"
-                        }
+                const synced =
+                    await syncPushSubscription(staff, true);
+
+                if (synced) {
+
+                    const notification =
+                        new Notification(
+                            "🔔 Dokaansathi Notifications Enabled",
+                            {
+                                body:
+                                    "You will receive new order alerts here.",
+                                icon: "/favicon.svg"
+                            }
+                        );
+
+                    setTimeout(() => {
+
+                        notification.close();
+
+                    }, 5000);
+
+                } else {
+
+                    alert(
+                        "Notification permission granted, but failed to register with server. Please try again."
                     );
 
-                setTimeout(() => {
-
-                    notification.close();
-
-                }, 5000);
+                }
 
             }
 
             else {
+
+                setNotificationEnabled(false);
 
                 alert(
                     "Notification permission was not granted."
@@ -533,163 +708,47 @@ const [managerDeliveryAlert, setManagerDeliveryAlert] =
                 error
             );
 
+            setNotificationEnabled(false);
+
         }
 
     };
 
     // ======================================================
-    // PUSH SUBSCRIPTION
+    // AUTO-SYNC PUSH SUBSCRIPTION IF PERMISSION ALREADY GRANTED
     // ======================================================
 
-    const subscribeToPushNotifications =
-        async () => {
+    useEffect(() => {
 
+        const currentStaff = (() => {
             try {
-
-                if (
-                    !("serviceWorker" in navigator) ||
-                    !("PushManager" in window) ||
-                    !("Notification" in window)
-                ) {
-
-                    console.log(
-                        "❌ This browser does not support Web Push"
-                    );
-
-                    return;
-                }
-
-                // ======================================
-                // REGISTER SERVICE WORKER
-                // ======================================
-
-                const registration =
-                    await navigator.serviceWorker.register(
-                        "/service-worker.js"
-                    );
-
-                console.log(
-                    "🔔 Push Service Worker Registered"
-                );
-
-                // ======================================
-                // NOTIFICATION PERMISSION
-                // ======================================
-
-                let permission =
-                    Notification.permission;
-
-                if (
-                    permission !==
-                    "granted"
-                ) {
-
-                    permission =
-                        await Notification.requestPermission();
-
-                }
-
-                if (
-                    permission !==
-                    "granted"
-                ) {
-
-                    console.log(
-                        "🔕 Notification permission not granted"
-                    );
-
-                    return;
-                }
-
-                // ======================================
-                // GET EXISTING SUBSCRIPTION
-                // ======================================
-
-                let subscription =
-                    await registration
-                        .pushManager
-                        .getSubscription();
-
-                // ======================================
-                // CREATE NEW SUBSCRIPTION
-                // ======================================
-
-                if (!subscription) {
-
-                    subscription =
-                        await registration
-                            .pushManager
-                            .subscribe(
-                                {
-                                    userVisibleOnly:
-                                        true,
-
-                                    applicationServerKey:
-                                        urlBase64ToUint8Array(
-                                            import.meta.env
-                                                .VITE_VAPID_PUBLIC_KEY
-                                        )
-                                }
-                            );
-
-                }
-
-                console.log(
-                    "🔔 PUSH SUBSCRIPTION CREATED"
-                );
-                // ======================================
-                // CHECK STAFF
-                // ======================================
-
-                if (!staff?.id) {
-
-                    console.log(
-                        "❌ Staff ID not available for push subscription"
-                    );
-
-                    return;
-                }
-
-                // ======================================
-                // SEND SUBSCRIPTION TO BACKEND
-                // ======================================
-
-                const response = await api.post(
-                    '/push/subscribe',
-                    {
-                        staff_id: staff.id,
-                        subscription: subscription.toJSON()
-                    },
-                    {
-                        headers: {
-                            "Content-Type": "application/json",
-                            Accept: "*/*",
-                            Authorization: `Bearer ${localStorage.getItem("staffToken")}`
-                        },
-                        validateStatus: () => true,
-                        transformResponse: [(data) => data]
-                    }
-                );
-
-                const data = JSON.parse(response.data);
-
-                console.log(
-                    "🔔 PUSH SUBSCRIPTION RESPONSE =",
-                    data
-                );
-
+                const saved =
+                    localStorage.getItem("staffUser") ||
+                    localStorage.getItem("staff");
+                return saved ? JSON.parse(saved) : null;
+            } catch {
+                return null;
             }
+        })();
 
-            catch (error) {
+        if (!currentStaff?.id) {
+            return;
+        }
 
-                console.error(
-                    "❌ PUSH SUBSCRIPTION ERROR:",
-                    error
-                );
+        if (
+            !("serviceWorker" in navigator) ||
+            !("PushManager" in window) ||
+            !("Notification" in window) ||
+            Notification.permission !== "granted"
+        ) {
+            setNotificationEnabled(false);
+            return;
+        }
 
-            }
+        // Verify existing subscription and sync with backend for current staff
+        syncPushSubscription(currentStaff, false);
 
-        };
+    }, [staff?.id, syncPushSubscription]);
 
     // ======================================================
     // NOTIFICATION BUTTON TEST
@@ -701,7 +760,9 @@ useEffect(() => {
 
             if (
                 event.data?.type ===
-                "DELIVERY_ALERT"
+                "DELIVERY_ALERT" ||
+                event.data?.type ===
+                    "MANAGER_DELIVERY_ALERT"
             ) {
 
                 console.log(
@@ -2565,8 +2626,7 @@ const logout = () => {
             {/* ==================================================
                 SUMMARY
             ================================================== */}
-
-            <div className="staff-summary">
+<div className={`staff-summary ${isDeliveryBoy ? "delivery-boy-summary" : ""}`}>
 
 
                 {/* TOTAL / MY ORDERS */}

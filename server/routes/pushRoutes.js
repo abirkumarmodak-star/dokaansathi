@@ -41,6 +41,7 @@ router.post("/subscribe", (req, res) => {
         )
         VALUES (?, ?, ?, ?)
         ON DUPLICATE KEY UPDATE
+            staff_id = VALUES(staff_id),
             p256dh = VALUES(p256dh),
             auth = VALUES(auth)
     `;

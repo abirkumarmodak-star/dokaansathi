@@ -1,131 +1,38 @@
-console.log("✅ menuRoutes.js loaded");
+﻿console.log("menuRoutes.js loaded");
 
 const express = require("express");
-
 const router = express.Router();
 
-// ==============================
-// IMPORT CONTROLLERS
-// ==============================
-
 const {
-
     getMenu,
-getCombos,
- createCombo,
- updateCombo,
-  deleteCombo,
+    getCombos,
+    createCombo,
+    updateCombo,
+    deleteCombo,
     createMenu,
-
     updateMenu,
-
     deleteMenu,
-
     toggleMenuStatus,
     makeAllMenuUnavailable
-
 } = require("../controllers/menuController");
 
-// ==============================
-// JWT MIDDLEWARE
-// ==============================
-
 const authMiddleware = require("../middleware/authMiddleware");
-// ==============================
-// MENU ROUTES
-// ==============================
+const requireRole = require("../middleware/roleMiddleware");
 
-// Get All Menu
-// Customer + Owner + Staff
+// Public read-only routes
+router.get("/", getMenu);
+router.get("/combos", getCombos);
 
-router.get(
+// Combo management: Owner only
+router.post("/combos", authMiddleware, requireRole("Owner", "owner"), createCombo);
+router.put("/combos/:id", authMiddleware, requireRole("Owner", "owner"), updateCombo);
+router.delete("/combos/:id", authMiddleware, requireRole("Owner", "owner"), deleteCombo);
 
-    "/",
-
-    getMenu
-
-);
-// Get All Combos
-// Customer + Owner + Staff
-
-router.get(
-    "/combos",
-    getCombos
-);
-// Create Menu Item
-// Owner Only
-// Create Combo
-// Owner Only
-
-router.post(
-    "/combos",
-    authMiddleware,
-    createCombo
-);
-router.put(
-    "/combos/:id",
-    authMiddleware,
-    updateCombo
-);
-router.delete(
-    "/combos/:id",
-    authMiddleware,
-    deleteCombo
-);
-router.post(
-
-    "/",
-
-    authMiddleware,
-
-    createMenu
-
-);
-
-// Update Menu Item
-// Owner Only
-
-router.put(
-
-    "/:id",
-
-    authMiddleware,
-
-    updateMenu
-
-);
-
-// Delete Menu Item
-// Owner Only
-
-router.delete(
-
-    "/:id",
-
-    authMiddleware,
-
-    deleteMenu
-
-);
-
-// Toggle Available / Unavailable
-// Owner Only
-// Make All Menu Items Unavailable
-// Owner Only
-
-router.patch(
-    "/make-all-unavailable",
-    authMiddleware,
-    makeAllMenuUnavailable
-);
-router.patch(
-
-    "/toggle/:id",
-
-    authMiddleware,
-
-    toggleMenuStatus
-
-);
+// Menu management: Owner only
+router.post("/", authMiddleware, requireRole("Owner", "owner"), createMenu);
+router.put("/:id", authMiddleware, requireRole("Owner", "owner"), updateMenu);
+router.delete("/:id", authMiddleware, requireRole("Owner", "owner"), deleteMenu);
+router.patch("/make-all-unavailable", authMiddleware, requireRole("Owner", "owner"), makeAllMenuUnavailable);
+router.patch("/toggle/:id", authMiddleware, requireRole("Owner", "owner"), toggleMenuStatus);
 
 module.exports = router;

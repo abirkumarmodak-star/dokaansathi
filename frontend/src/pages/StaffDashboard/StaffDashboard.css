@@ -1,4 +1,4 @@
-.staff-dashboard{
+﻿.staff-dashboard{
 
     padding:30px;
 
@@ -66,4 +66,120 @@
 
     margin-top:15px;
 
+}
+/* Delivery Boy dashboard: responsive mobile layout */
+.staff-dashboard {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+}
+
+.staff-dashboard *,
+.staff-dashboard *::before,
+.staff-dashboard *::after {
+    box-sizing: border-box;
+}
+
+.staff-dashboard .staff-header,
+.staff-dashboard .staff-summary,
+.staff-dashboard .delivery-info {
+    max-width: 100%;
+}
+
+.staff-dashboard .orders-container {
+    align-items: stretch;
+}
+
+.staff-dashboard .order-card {
+    width: min(100%, 360px);
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.staff-dashboard button {
+    min-height: 44px;
+    max-width: 100%;
+    touch-action: manipulation;
+}
+
+@media (max-width: 600px) {
+    .staff-dashboard {
+        padding: 14px;
+    }
+
+    .staff-dashboard h1 {
+        font-size: 1.45rem;
+        line-height: 1.3;
+    }
+
+    .staff-dashboard .orders-container {
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+    }
+
+    .staff-dashboard .order-card {
+        width: 100%;
+        padding: 16px;
+    }
+
+    .staff-dashboard button {
+        width: 100%;
+        min-height: 46px;
+        margin-top: 10px;
+        white-space: normal;
+        overflow-wrap: anywhere;
+    }
+}
+
+/* Responsive summary cards — Delivery Boy only */
+.staff-dashboard .delivery-boy-summary {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 16px;
+    width: 100%;
+    margin: 20px 0;
+}
+
+.staff-dashboard .delivery-boy-summary .summary-card {
+    min-width: 0;
+    padding: 18px;
+    border-radius: 12px;
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    overflow-wrap: anywhere;
+}
+
+.staff-dashboard .delivery-boy-summary .summary-card h3 {
+    margin: 0 0 12px;
+    font-size: 1rem;
+    line-height: 1.4;
+}
+
+.staff-dashboard .delivery-boy-summary .summary-card strong {
+    display: block;
+    font-size: 1.8rem;
+    line-height: 1.2;
+}
+
+@media (max-width: 900px) {
+    .staff-dashboard .delivery-boy-summary {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+    }
+}
+
+@media (max-width: 380px) {
+    .staff-dashboard .delivery-boy-summary {
+        gap: 8px;
+    }
+
+    .staff-dashboard .delivery-boy-summary .summary-card {
+        padding: 12px;
+    }
+
+    .staff-dashboard .delivery-boy-summary .summary-card h3 {
+        font-size: 0.9rem;
+    }
 }

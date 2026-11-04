@@ -1,3 +1,4 @@
+
 const db = require("../config/db");
 
 // =====================================
@@ -8,87 +9,73 @@ exports.checkPendingOrders = () => {
 
     console.log("🔍 Checking Pending Orders...");
 
-    const sql = `
-        SELECT
-            o.id,
-            o.token_number
-        FROM orders o
-        WHERE o.order_status = 'Pending'
-        AND NOT EXISTS (
-            SELECT 1
-            FROM alerts a
-            WHERE a.order_id = o.id
-            AND a.alert_type = 'PENDING_ORDER'
-            AND a.is_read = 0
-        )
-    `;
+    return new Promise((resolve, reject) => {
 
-    db.query(sql, (err, orders) => {
-
-        if (err) {
-
-            console.log(
-                "❌ PENDING ORDER CHECK ERROR:",
-                err
-            );
-
-            return;
-        }
-
-        console.log(
-            `Pending Orders Requiring Alert : ${orders.length}`
-        );
-
-        if (orders.length === 0) {
-
-            return;
-        }
-
-        const insertSql = `
-            INSERT INTO alerts
-            (
-                order_id,
-                user_type,
-                alert_type,
-                message
+        const sql = `
+            SELECT
+                o.id,
+                o.token_number
+            FROM orders o
+            WHERE o.order_status = 'Pending'
+            AND NOT EXISTS (
+                SELECT 1
+                FROM alerts a
+                WHERE a.order_id = o.id
+                AND a.alert_type = 'PENDING_ORDER'
+                AND a.is_read = 0
             )
-            VALUES ?
         `;
 
-        const values = orders.map((order) => [
+        db.query(sql, (err, orders) => {
 
-            order.id,
+            if (err) {
+                console.log("❌ PENDING ORDER CHECK ERROR:", err);
+                return reject(err);
+            }
 
-            "owner",
+            console.log(
+                `Pending Orders Requiring Alert : ${orders.length}`
+            );
 
-            "PENDING_ORDER",
+            if (orders.length === 0) {
+                return resolve();
+            }
 
-            `Token ${order.token_number} এখনও Accept করা হয়নি।`
+            const insertSql = `
+                INSERT INTO alerts
+                (
+                    order_id,
+                    user_type,
+                    alert_type,
+                    message
+                )
+                VALUES ?
+            `;
 
-        ]);
+            const values = orders.map((order) => [
+                order.id,
+                "owner",
+                "PENDING_ORDER",
+                `Token ${order.token_number} এখনও Accept করা হয়নি।`
+            ]);
 
-        db.query(
-            insertSql,
-            [values],
-            (insertErr, result) => {
+            db.query(
+                insertSql,
+                [values],
+                (insertErr, result) => {
 
-                if (insertErr) {
+                    if (insertErr) {
+                        console.log("❌ ALERT INSERT ERROR:", insertErr);
+                        return reject(insertErr);
+                    }
 
                     console.log(
-                        "❌ ALERT INSERT ERROR:",
-                        insertErr
+                        `✅ ${result.affectedRows} Pending Order Alert(s) Created`
                     );
 
-                    return;
+                    resolve(result);
                 }
-
-                console.log(
-                    `✅ ${result.affectedRows} Pending Order Alert(s) Created`
-                );
-
-            }
-        );
-
+            );
+        });
     });
-
 };

@@ -519,26 +519,42 @@ app.listen(
 // ======================================================
 // BACKGROUND TIMER
 // ======================================================
+// ======================================================
+// BACKGROUND TIMER WITH OVERLAP PROTECTION
+// ======================================================
 
-setInterval(
-    () => {
+let backgroundTimerRunning = false;
 
-        console.log(
-            "⏰ Background Timer Running"
-        );
+setInterval(async () => {
 
-        // ----------------------------------------------
+    // Previous cycle is still running
+    if (backgroundTimerRunning) {
+        console.log("⏭️ BACKGROUND TIMER SKIPPED — PREVIOUS CYCLE RUNNING");
+        return;
+    }
+
+    backgroundTimerRunning = true;
+
+    try {
+        console.log("⏰ Background Timer Running");
+
         // CHECK PENDING ORDERS
-        // ----------------------------------------------
+        try {
+            await checkPendingOrders();
+        } catch (err) {
+            console.error("❌ PENDING ORDER CHECK ERROR:", err);
+        }
 
-        checkPendingOrders();
-
-        // ----------------------------------------------
         // CHECK DELIVERY ASSIGNMENT ESCALATION
-        // ----------------------------------------------
+        try {
+            await checkDeliveryAssignmentEscalation();
+        } catch (err) {
+            console.error("❌ DELIVERY ESCALATION CHECK ERROR:", err);
+        }
 
-        checkDeliveryAssignmentEscalation();
+    } finally {
+        // Always release the scheduler lock
+        backgroundTimerRunning = false;
+    }
 
-    },
-    30000
-);
+}, 30000);

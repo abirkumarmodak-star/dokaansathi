@@ -350,8 +350,7 @@ const openOwnerWhatsApp = () => {
 };
 
     const payNow = () => {
-        const upiId =
-            "MAB.037135003970219@AXISBANK";
+        const upiId = "Q015676127@ybl";
 
         const shopName =
             "JANA FOOD HUB";
@@ -367,7 +366,13 @@ const openOwnerWhatsApp = () => {
         alert(
             "Please complete the payment using your UPI app."
         );
-
+console.log("UPI PAYMENT DEBUG:", {
+    upiId,
+    shopName,
+    amount,
+    upiLink
+});
+console.log("Generated UPI Link:", upiLink);
         window.location.href = upiLink;
     };
 
@@ -393,7 +398,10 @@ console.log(
         console.log(
             "========== CONFIRM ORDER =========="
         );
-
+if (!whatsappConfirmed) {
+    alert("Please send your order details to the owner on WhatsApp first.");
+    return;
+}
         // --------------------------------------------------
         // CART VALIDATION
         // --------------------------------------------------
@@ -473,41 +481,41 @@ if (!deliveryLandmarkName.trim()) {
                     "Adding items to existing order:",
                     existingOrderId
                 );
+for (const item of cartItems) {
+    const isCombo = item.itemType === "combo";
 
-                for (const item of cartItems) {
-                    const response = await api.post(
-                        "/order-items/add",
-                        JSON.stringify({
-                                order_id:
-                                    existingOrderId,
-                                menu_id:
-                                    item.id,
-                                quantity:
-                                    item.quantity,
-                                price:
-                                    item.price,
-                            }),
-                        {
-                            headers: {
-                                "Content-Type": "application/json",
-                                Accept: "*/*"
-                            },
-                            validateStatus: () => true,
-                            transformResponse: [(data) => data]
-                        }
-                    );
+    const payload = {
+        order_id: existingOrderId,
+        quantity: Number(item.quantity),
+        price: Number(item.price),
+        ...(isCombo
+            ? {
+                combo_id: Number(item.comboId),
+                item_type: "combo",
+            }
+            : {
+                menu_id: Number(
+                    item.menu_id ?? item.menuId ?? item.id
+                ),
+            }),
+    };
 
-                    const data = JSON.parse(response.data);
+    const response = await api.post(
+    "/order-items/add",
+    payload,
+    {
+        validateStatus: () => true,
+    }
+);
 
-                    if (response.status < 200 || response.status >= 300) {
-                        alert(
-                            data.message ||
-                                "Failed to add item."
-                        );
-                        return;
-                    }
-                }
+const data = response.data;
 
+if (response.status < 200 || response.status >= 300) {
+    alert(data.message || "Failed to add item.");
+    return;
+}
+   
+}
                 const token =
                     localStorage.getItem(
                         "existingToken"
@@ -1080,13 +1088,11 @@ localStorage.setItem(
                         Shop UPI ID
                     </p>
 
-                    <h2>
-                        MAB.037135003970219@AXISBANK
-                    </h2>
+                  <h2>Q015676127@ybl</h2> 
 
                     <img
                         src="/upi-qr.jpeg"
-                        alt="UPI QR Code"
+    alt="Jana Food Hub UPI QR Code"
                         style={{
                             width:
                                 "220px",

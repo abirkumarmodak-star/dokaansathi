@@ -1056,438 +1056,308 @@ exports.updateOrderItem = (req, res) => {
 // THIS IS THE MOST IMPORTANT FUNCTION FOR YOUR CURRENT
 // "MASALA DOSA -1" PROBLEM.
 // ======================================================
-
-exports.addOrderItem = (req, res) => {
-
+exports.addOrderItem = async (req, res) => {
     const {
         order_id,
         menu_id,
+        combo_id,
+        item_type,
         quantity,
         price
     } = req.body;
 
+    const isCombo =
+        item_type === "combo" || combo_id != null;
 
-    // ==================================================
-    // VALIDATION
-    // ==================================================
-
-    if (
-        !order_id ||
-        !menu_id ||
-        !quantity ||
-        price === undefined ||
-        price === null
-    ) {
-
-        return res.status(400).json({
-            success: false,
-            message: "Required Data Missing"
-        });
-
-    }
-
-
-    const requestedQuantity =
-        Number(quantity);
-
-    const itemPrice =
-        Number(price);
-
+    const requestedQuantity = Number(quantity);
+    const orderId = Number(order_id);
 
     if (
-        requestedQuantity <= 0 ||
-        itemPrice < 0
+        !Number.isInteger(orderId) ||
+        orderId <= 0 ||
+        !Number.isInteger(requestedQuantity) ||
+        requestedQuantity <= 0
     ) {
-
         return res.status(400).json({
             success: false,
-            message: "Invalid Quantity Or Price"
+            message: "Invalid Order ID Or Quantity"
         });
-
     }
 
-
-    // ==================================================
-    // STEP 1 : CHECK ORDER STATUS
-    // ==================================================
-
-    const checkOrderSQL = `
-        SELECT order_status
-        FROM orders
-        WHERE id = ?
-    `;
-
-
-    db.query(
-        checkOrderSQL,
-        [order_id],
-        (err, orderResult) => {
-
-            if (err) {
-
-                console.log(
-                    "CHECK ORDER ERROR:",
-                    err
-                );
-
-                return res.status(500).json({
-                    success: false,
-                    message: "Database Error"
-                });
-
-            }
-
-
-            if (
-                orderResult.length === 0
-            ) {
-
-                return res.status(404).json({
-                    success: false,
-                    message: "Order Not Found"
-                });
-
-            }
-
-
-            if (
-                orderResult[0].order_status !==
-                "Pending"
-            ) {
-
-                return res.status(400).json({
-                    success: false,
-                    message:
-                        "Order cannot be modified after preparation started"
-                });
-
-            }
-
-
-            // ==================================================
-            // STEP 2 : ATOMIC STOCK CHECK + DEDUCTION
-            // ==================================================
-
-            const deductStockSQL = `
-                UPDATE inventory
-                SET
-                    current_stock =
-                        current_stock - ?
-                WHERE menu_id = ?
-                AND current_stock >= ?
-            `;
-
-
-            db.query(
-                deductStockSQL,
-                [
-                    requestedQuantity,
-                    menu_id,
-                    requestedQuantity
-                ],
-                (stockErr, stockResult) => {
-
-                    if (stockErr) {
-
-                        console.log(
-                            "ADD ITEM STOCK ERROR:",
-                            stockErr
-                        );
-
-                        return res.status(500).json({
-                            success: false,
-                            message:
-                                "Inventory Update Failed"
-                        });
-
-                    }
-
-
-                    // ==================================================
-                    // STOCK WAS NOT AVAILABLE
-                    // ==================================================
-
-                    if (
-                        stockResult.affectedRows === 0
-                    ) {
-
-                        const checkStockSQL = `
-                            SELECT current_stock
-                            FROM inventory
-                            WHERE menu_id = ?
-                        `;
-
-
-                        db.query(
-                            checkStockSQL,
-                            [menu_id],
-                            (checkErr, stockResult2) => {
-
-                                if (checkErr) {
-
-                                    return res.status(500).json({
-                                        success: false,
-                                        message:
-                                            "Inventory Error"
-                                    });
-
-                                }
-
-
-                                if (
-                                    stockResult2.length === 0
-                                ) {
-
-                                    return res.status(404).json({
-                                        success: false,
-                                        message:
-                                            "Inventory Not Found"
-                                    });
-
-                                }
-
-
-                                const availableStock =
-                                    Math.max(
-                                        0,
-                                        Number(
-                                            stockResult2[0]
-                                                .current_stock || 0
-                                        )
-                                    );
-
-
-                                if (
-                                    availableStock <= 0
-                                ) {
-
-                                    return res.status(400).json({
-
-                                        success: false,
-
-                                        message:
-                                            "No Stock Available",
-
-                                        currentStock:
-                                            0
-
-                                    });
-
-                                }
-
-
-                                return res.status(400).json({
-
-                                    success: false,
-
-                                    message:
-                                        `Only ${availableStock} stock available`,
-
-                                    currentStock:
-                                        availableStock
-
-                                });
-
-                            }
-                        );
-
-                        return;
-
-                    }
-
-
-                    // ==================================================
-                    // STEP 3 : INSERT ORDER ITEM
-                    // ==================================================
-
-                    const subtotal =
-                        requestedQuantity *
-                        itemPrice;
-
-
-                    const insertSQL = `
-                        INSERT INTO order_items
-                        (
-                            order_id,
-                            menu_id,
-                            quantity,
-                            price,
-                            subtotal
-                        )
-                        VALUES (?, ?, ?, ?, ?)
-                    `;
-
-
-                    db.query(
-                        insertSQL,
-                        [
-                            order_id,
-                            menu_id,
-                            requestedQuantity,
-                            itemPrice,
-                            subtotal
-                        ],
-                        (insertErr, insertResult) => {
-
-                            if (insertErr) {
-
-                                console.log(
-                                    "ADD ITEM INSERT ERROR:",
-                                    insertErr
-                                );
-
-
-                                // ==================================================
-                                // RESTORE STOCK IF INSERT FAILED
-                                // ==================================================
-
-                                const restoreSQL = `
-                                    UPDATE inventory
-                                    SET
-                                        current_stock =
-                                            current_stock + ?
-                                    WHERE menu_id = ?
-                                `;
-
-
-                                db.query(
-                                    restoreSQL,
-                                    [
-                                        requestedQuantity,
-                                        menu_id
-                                    ],
-                                    (restoreErr) => {
-
-                                        if (restoreErr) {
-
-                                            console.log(
-                                                "RESTORE STOCK ERROR:",
-                                                restoreErr
-                                            );
-
-                                        }
-
-
-                                        return res.status(500).json({
-
-                                            success: false,
-
-                                            message:
-                                                "Item Add Failed",
-
-                                            error:
-                                                insertErr.sqlMessage ||
-                                                insertErr.message
-
-                                        });
-
-                                    }
-                                );
-
-                                return;
-
-                            }
-
-
-                            // ==================================================
-                            // STEP 4 : RECALCULATE ORDER TOTAL
-                            // ==================================================
-
-                            const totalSQL = `
-                                SELECT
-                                    SUM(subtotal) AS grandTotal
-                                FROM order_items
-                                WHERE order_id = ?
-                            `;
-
-
-                            db.query(
-                                totalSQL,
-                                [order_id],
-                                (sumErr, totalResult) => {
-
-                                    if (sumErr) {
-
-                                        return res.status(500).json({
-
-                                            success: false,
-
-                                            message:
-                                                "Database Error"
-
-                                        });
-
-                                    }
-
-
-                                    const grandTotal =
-                                        Number(
-                                            totalResult[0]
-                                                .grandTotal || 0
-                                        );
-
-
-                                    // ==================================================
-                                    // STEP 5 : UPDATE ORDER TOTAL
-                                    // ==================================================
-
-                                    const updateOrderSQL = `
-                                        UPDATE orders
-                                        SET total_amount = ?
-                                        WHERE id = ?
-                                    `;
-
-
-                                    db.query(
-                                        updateOrderSQL,
-                                        [
-                                            grandTotal,
-                                            order_id
-                                        ],
-                                        (orderErr) => {
-
-                                            if (orderErr) {
-
-                                                return res.status(500).json({
-
-                                                    success: false,
-
-                                                    message:
-                                                        "Order Update Failed"
-
-                                                });
-
-                                            }
-
-
-                                            return res.status(200).json({
-
-                                                success: true,
-
-                                                message:
-                                                    "Item Added Successfully",
-
-                                                orderItemId:
-                                                    insertResult.insertId,
-
-                                                newTotal:
-                                                    grandTotal
-
-                                            });
-
-                                        }
-                                    );
-
-                                }
-                            );
-
-                        }
-                    );
-
-                }
+    const menuId = Number(menu_id);
+    const comboId = Number(combo_id);
+    const itemPrice = Number(price);
+
+    if (
+        isCombo &&
+        (!Number.isInteger(comboId) || comboId <= 0)
+    ) {
+        return res.status(400).json({
+            success: false,
+            message: "Invalid Combo ID"
+        });
+    }
+
+    if (
+        !isCombo &&
+        (
+            !Number.isInteger(menuId) ||
+            menuId <= 0 ||
+            !Number.isFinite(itemPrice) ||
+            itemPrice < 0
+        )
+    ) {
+        return res.status(400).json({
+            success: false,
+            message: "Invalid Menu Item Or Price"
+        });
+    }
+
+    let connection;
+    let transactionStarted = false;
+
+    const query = (sql, params = []) =>
+        new Promise((resolve, reject) => {
+            connection.query(sql, params, (err, result) => {
+                if (err) return reject(err);
+                resolve(result);
+            });
+        });
+
+    try {
+        connection = await new Promise((resolve, reject) => {
+            db.getConnection((err, conn) => {
+                if (err) return reject(err);
+                resolve(conn);
+            });
+        });
+
+        await new Promise((resolve, reject) => {
+            connection.beginTransaction(err => {
+                if (err) return reject(err);
+                resolve();
+            });
+        });
+
+        transactionStarted = true;
+
+        // 1. Lock and check order
+        const orderRows = await query(
+            `SELECT order_status
+             FROM orders
+             WHERE id = ?
+             FOR UPDATE`,
+            [orderId]
+        );
+
+        if (orderRows.length === 0) {
+            const error = new Error("Order Not Found");
+            error.statusCode = 404;
+            throw error;
+        }
+
+        if (orderRows[0].order_status !== "Pending") {
+            const error = new Error(
+                "Order cannot be modified after preparation started"
+            );
+            error.statusCode = 400;
+            throw error;
+        }
+
+        let itemsToInsert = [];
+
+        // 2. Prepare combo component items
+        if (isCombo) {
+            const comboRows = await query(
+                `SELECT id, item1_id, item2_id,
+                        combo_price, available
+                 FROM combos
+                 WHERE id = ?
+                 LIMIT 1`,
+                [comboId]
             );
 
-        }
-    );
+            if (comboRows.length === 0) {
+                const error = new Error("Combo Not Found");
+                error.statusCode = 404;
+                throw error;
+            }
 
+            const combo = comboRows[0];
+
+            if (Number(combo.available) !== 1) {
+                const error = new Error("Combo Not Available");
+                error.statusCode = 400;
+                throw error;
+            }
+
+            const item1Id = Number(combo.item1_id);
+            const item2Id = Number(combo.item2_id);
+            const comboPrice = Number(combo.combo_price);
+
+            if (
+                !Number.isInteger(item1Id) ||
+                !Number.isInteger(item2Id) ||
+                item1Id <= 0 ||
+                item2Id <= 0 ||
+                item1Id === item2Id ||
+                !Number.isFinite(comboPrice) ||
+                comboPrice < 40
+            ) {
+                const error = new Error("Invalid Combo Configuration");
+                error.statusCode = 400;
+                throw error;
+            }
+
+            // Same price allocation used by New Order combo flow
+            itemsToInsert = [
+                {
+                    menuId: item1Id,
+                    price: 40
+                },
+                {
+                    menuId: item2Id,
+                    price: comboPrice - 40
+                }
+            ];
+        } else {
+            itemsToInsert = [
+                {
+                    menuId,
+                    price: itemPrice
+                }
+            ];
+        }
+
+        // 3. Deduct stock and insert each component
+        const insertedIds = [];
+
+        for (const item of itemsToInsert) {
+            const stockResult = await query(
+                `UPDATE inventory
+                 SET current_stock = current_stock - ?
+                 WHERE menu_id = ?
+                 AND current_stock >= ?`,
+                [
+                    requestedQuantity,
+                    item.menuId,
+                    requestedQuantity
+                ]
+            );
+
+            if (stockResult.affectedRows === 0) {
+                const stockRows = await query(
+                    `SELECT current_stock
+                     FROM inventory
+                     WHERE menu_id = ?`,
+                    [item.menuId]
+                );
+
+                if (stockRows.length === 0) {
+                    const error = new Error("Inventory Not Found");
+                    error.statusCode = 404;
+                    throw error;
+                }
+
+                const availableStock = Math.max(
+                    0,
+                    Number(stockRows[0].current_stock || 0)
+                );
+
+                const error = new Error(
+                    availableStock <= 0
+                        ? "No Stock Available"
+                        : `Only ${availableStock} stock available`
+                );
+
+                error.statusCode = 400;
+                throw error;
+            }
+
+            const subtotal =
+                requestedQuantity * item.price;
+
+            const insertResult = await query(
+                `INSERT INTO order_items
+                 (
+                     order_id,
+                     menu_id,
+                     quantity,
+                     price,
+                     subtotal
+                 )
+                 VALUES (?, ?, ?, ?, ?)`,
+                [
+                    orderId,
+                    item.menuId,
+                    requestedQuantity,
+                    item.price,
+                    subtotal
+                ]
+            );
+
+            insertedIds.push(insertResult.insertId);
+        }
+
+        // 4. Recalculate order total
+        const totalRows = await query(
+            `SELECT SUM(subtotal) AS grandTotal
+             FROM order_items
+             WHERE order_id = ?`,
+            [orderId]
+        );
+
+        const grandTotal = Number(
+            totalRows[0].grandTotal || 0
+        );
+
+        // 5. Update order total
+        await query(
+            `UPDATE orders
+             SET total_amount = ?
+             WHERE id = ?`,
+            [grandTotal, orderId]
+        );
+
+        // 6. Commit everything
+        await new Promise((resolve, reject) => {
+            connection.commit(err => {
+                if (err) return reject(err);
+                resolve();
+            });
+        });
+
+        transactionStarted = false;
+
+        return res.status(200).json({
+            success: true,
+            message: "Item Added Successfully",
+            orderItemIds: insertedIds,
+            orderItemId: insertedIds[0],
+            newTotal: grandTotal
+        });
+
+    } catch (err) {
+        console.log("ADD ORDER ITEM ERROR:", err);
+
+        if (connection && transactionStarted) {
+            await new Promise(resolve => {
+                connection.rollback(() => resolve());
+            });
+
+            transactionStarted = false;
+        }
+
+        return res.status(err.statusCode || 500).json({
+            success: false,
+            message: err.statusCode
+                ? err.message
+                : "Item Add Failed"
+        });
+
+    } finally {
+        if (connection) {
+            connection.release();
+        }
+    }
 };

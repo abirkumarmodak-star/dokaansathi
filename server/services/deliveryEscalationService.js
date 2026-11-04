@@ -1,914 +1,734 @@
+
 const db = require("../config/db");
 
 const {
     sendPushToDeliveryBoy
 } = require("./deliveryPushService");
 
+const REMINDER_MINUTES = 5;
+const ESCALATION_MINUTES = 5;
+const IST_OFFSET_MINUTES = 330;
 
-// ======================================================
-// 🚚 DELIVERY ESCALATION MONITOR
-// 1) 10 min -> Reminder
-// 2) Another 10 min -> Next DeliveryBoy
-// ======================================================
-
-
-const queryDB = (sql, params = []) => {
-    return new Promise((resolve, reject) => {
-        db.query(sql, params, (err, result) => {
-            if (err) {
-                return reject(err);
-            }
-
+const query = (connection, sql, params = []) =>
+    new Promise((resolve, reject) => {
+        connection.query(sql, params, (err, result) => {
+            if (err) return reject(err);
             resolve(result);
         });
     });
+
+const withTransaction = async (callback) => {
+    const connection = await new Promise((resolve, reject) => {
+        db.getConnection((err, conn) => {
+            if (err) return reject(err);
+            resolve(conn);
+        });
+    });
+
+    try {
+        await new Promise((resolve, reject) => {
+            connection.beginTransaction(err =>
+                err ? reject(err) : resolve()
+            );
+        });
+
+        const result = await callback(connection);
+
+        await new Promise((resolve, reject) => {
+            connection.commit(err =>
+                err ? reject(err) : resolve()
+            );
+        });
+
+        return result;
+    } catch (err) {
+        try {
+            await new Promise((resolve, reject) => {
+                connection.rollback(rollbackErr =>
+                    rollbackErr ? reject(rollbackErr) : resolve()
+                );
+            });
+        } catch (rollbackError) {
+            console.error("❌ TRANSACTION ROLLBACK ERROR:", rollbackError);
+        }
+
+        throw err;
+    } finally {
+        connection.release();
+    }
 };
 
+const isActiveOrder = (order) =>
+    order &&
+    order.order_type === "Delivery" &&
+    !["Completed", "Cancelled"].includes(order.order_status);
 
 // ======================================================
-// 🚨 STEP 1
-// 10 MINUTE REMINDER TO SAME DELIVERY BOY
+// STEP 1: REMINDER AFTER 5 MINUTES
 // ======================================================
 
 const processReminders = async () => {
-
-    const sql = `
-
-        SELECT
-
-            aa.id AS attempt_id,
-            aa.order_id,
-            aa.delivery_boy_id,
-            aa.attempt_no,
-            aa.status AS attempt_status,
-            aa.assigned_at,
-            aa.reminded_at,
-
-            DATE_ADD(
-                aa.assigned_at,
-                INTERVAL 330 MINUTE
-            ) AS assigned_at_ist,
-
-            DATE_ADD(
-                UTC_TIMESTAMP(),
-                INTERVAL 330 MINUTE
-            ) AS current_ist,
-
-            TIMESTAMPDIFF(
-                MINUTE,
-                aa.assigned_at,
-                UTC_TIMESTAMP()
-            ) AS elapsed_minutes,
-
-            da.id AS assignment_id,
-            da.status AS assignment_status
-
-        FROM delivery_assignment_attempts aa
-
-        INNER JOIN delivery_assignments da
-            ON da.order_id = aa.order_id
-
-        INNER JOIN orders o
-            ON o.id = aa.order_id
-
-        WHERE aa.status = 'Assigned'
-
-        AND aa.reminded_at IS NULL
-
-        AND da.status = 'Assigned'
-
-        AND o.order_type = 'Delivery'
-
-        AND o.order_status NOT IN (
-            'Completed',
-            'Cancelled'
-        )
-AND aa.assigned_at <= DATE_SUB(
-    UTC_TIMESTAMP(),
-    INTERVAL 5 MINUTE
-)
-
-        AND NOT EXISTS (
-            SELECT 1
-            FROM delivery_assignment_attempts newer
-            WHERE newer.order_id = aa.order_id
-            AND newer.attempt_no > aa.attempt_no
-        )
-
-        ORDER BY aa.assigned_at ASC
-
-    `;
-
-
-    let rows;
+    let candidates;
 
     try {
-
-        rows = await queryDB(sql);
-
-    }
-    catch (err) {
-
-        console.error(
-            "❌ DELIVERY REMINDER QUERY ERROR:",
-            err
+        candidates = await query(
+            db,
+            `
+                SELECT
+                    aa.id AS attempt_id,
+                    aa.order_id,
+                    aa.delivery_boy_id,
+                    aa.attempt_no,
+                    da.id AS assignment_id
+                FROM delivery_assignment_attempts aa
+                INNER JOIN delivery_assignments da
+                    ON da.order_id = aa.order_id
+                WHERE aa.status = 'Assigned'
+                  AND aa.reminded_at IS NULL
+                  AND da.status = 'Assigned'
+                  AND aa.assigned_at <= DATE_SUB(
+                      UTC_TIMESTAMP(),
+                      INTERVAL ? MINUTE
+                  )
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM delivery_assignment_attempts newer
+                      WHERE newer.order_id = aa.order_id
+                        AND (
+                            newer.attempt_no > aa.attempt_no
+                            OR (
+                                newer.attempt_no = aa.attempt_no
+                                AND newer.id > aa.id
+                            )
+                        )
+                  )
+                ORDER BY aa.assigned_at ASC
+            `,
+            [REMINDER_MINUTES]
         );
-
+    } catch (err) {
+        console.error("❌ REMINDER CANDIDATE QUERY ERROR:", err);
         return;
     }
 
-
-    console.log(
-        "🔍 REMINDER CANDIDATES =",
-        rows.length
-    );
-
-
-    if (!rows.length) {
-
-        console.log(
-            "✅ NO DELIVERY REMINDER REQUIRED"
-        );
-
-        return;
-    }
-
-
-    for (const assignment of rows) {
-
-        console.log("");
-        console.log("🚨 10-MINUTE REMINDER");
-        console.log(
-            "🆔 ATTEMPT ID =",
-            assignment.attempt_id
-        );
-        console.log(
-            "📦 ORDER ID =",
-            assignment.order_id
-        );
-        console.log(
-            "👤 DELIVERYBOY ID =",
-            assignment.delivery_boy_id
-        );
-        console.log(
-            "🔢 ATTEMPT NO =",
-            assignment.attempt_no
-        );
-        console.log(
-            "🇮🇳 ASSIGNED AT IST =",
-            assignment.assigned_at_ist
-        );
-        console.log(
-            "🇮🇳 CURRENT IST =",
-            assignment.current_ist
-        );
-        console.log(
-            "⏱️ ELAPSED MINUTES =",
-            assignment.elapsed_minutes
-        );
-
-
-        // ==================================================
-        // CLAIM REMINDER
-        // ==================================================
-
-        let claimResult;
-
+    for (const candidate of candidates) {
         try {
-
-            claimResult = await queryDB(
-
-                `
-                    UPDATE delivery_assignment_attempts
-
-                    SET
-                        status = 'Reminded',
-                        reminded_at = UTC_TIMESTAMP()
-
-                    WHERE id = ?
-
-                    AND status = 'Assigned'
-
-                    AND reminded_at IS NULL
-                `,
-
-                [
-                    assignment.attempt_id
-                ]
-
-            );
-
-        }
-        catch (err) {
-
-            console.error(
-                "❌ REMINDER CLAIM ERROR:",
-                err
-            );
-
-            continue;
-        }
-
-
-        if (
-            claimResult.affectedRows === 0
-        ) {
-
-            console.log(
-                "ℹ️ REMINDER ALREADY CLAIMED"
-            );
-
-            continue;
-        }
-
-
-        console.log(
-            "✅ REMINDER CLAIMED"
-        );
-
-
-        // ==================================================
-        // SEND REMINDER PUSH
-        // ==================================================
-
-        try {
-
-            const pushResult =
-                await sendPushToDeliveryBoy(
-
-                    assignment.delivery_boy_id,
-
-                    {
-
-                        orderId:
-                            assignment.order_id,
-
-                        assignmentId:
-                            assignment.assignment_id,
-
-                        attemptNo:
-                            assignment.attempt_no,
-
-                        title:
-                            "🚚 Delivery Reminder",
-
-                        body:
-                            `Order #${assignment.order_id} is still waiting for your acceptance.`,
-
-                        tag:
-                            `delivery-reminder-${assignment.order_id}-attempt-${assignment.attempt_no}`,
-
-                        url:
-                            "/staff-dashboard"
-
-                    }
-
+            const claimed = await withTransaction(async connection => {
+                // Lock order consistently after assignment and attempt.
+                const assignments = await query(
+                    connection,
+                    `
+                        SELECT id, order_id, delivery_boy_id, status
+                        FROM delivery_assignments
+                        WHERE id = ?
+                        FOR UPDATE
+                    `,
+                    [candidate.assignment_id]
                 );
 
+                if (!assignments.length) return false;
 
-            console.log(
-                "📨 REMINDER PUSH RESULT =",
-                pushResult
-            );
+                const assignment = assignments[0];
 
+                if (
+                    assignment.status !== "Assigned" ||
+                    Number(assignment.delivery_boy_id) !==
+                        Number(candidate.delivery_boy_id)
+                ) {
+                    return false;
+                }
 
-            // ==================================================
-            // PUSH WAS NOT ACTUALLY SENT
-            // RESET FOR RETRY
-            // ==================================================
+                const attempts = await query(
+                    connection,
+                    `
+                        SELECT *
+                        FROM delivery_assignment_attempts
+                        WHERE id = ?
+                        FOR UPDATE
+                    `,
+                    [candidate.attempt_id]
+                );
 
-            
-        }
-        catch (pushError) {
+                if (!attempts.length) return false;
 
+                const attempt = attempts[0];
+
+                if (
+                    attempt.status !== "Assigned" ||
+                    attempt.reminded_at !== null ||
+                    Number(attempt.delivery_boy_id) !==
+                        Number(candidate.delivery_boy_id)
+                ) {
+                    return false;
+                }
+
+                const latest = await query(
+                    connection,
+                    `
+                        SELECT id
+                        FROM delivery_assignment_attempts
+                        WHERE order_id = ?
+                        ORDER BY attempt_no DESC, id DESC
+                        LIMIT 1
+                    `,
+                    [candidate.order_id]
+                );
+
+                if (
+                    !latest.length ||
+                    Number(latest[0].id) !== Number(candidate.attempt_id)
+                ) {
+                    return false;
+                }
+
+                const orders = await query(
+                    connection,
+                    `
+                        SELECT id, order_type, order_status
+                        FROM orders
+                        WHERE id = ?
+                        FOR UPDATE
+                    `,
+                    [candidate.order_id]
+                );
+
+                if (!isActiveOrder(orders[0])) return false;
+
+                const elapsed = await query(
+                    connection,
+                    `
+                        SELECT
+                            assigned_at <= DATE_SUB(
+                                UTC_TIMESTAMP(),
+                                INTERVAL ? MINUTE
+                            ) AS ready
+                        FROM delivery_assignment_attempts
+                        WHERE id = ?
+                    `,
+                    [REMINDER_MINUTES, candidate.attempt_id]
+                );
+
+                if (!elapsed[0] || !elapsed[0].ready) return false;
+
+                const result = await query(
+                    connection,
+                    `
+                        UPDATE delivery_assignment_attempts
+                        SET status = 'Reminded',
+                            reminded_at = UTC_TIMESTAMP()
+                        WHERE id = ?
+                          AND status = 'Assigned'
+                          AND reminded_at IS NULL
+                    `,
+                    [candidate.attempt_id]
+                );
+
+                return result.affectedRows === 1;
+            });
+
+            if (!claimed) continue;
+
+            let pushResult;
+
+            try {
+                pushResult = await sendPushToDeliveryBoy(
+                    candidate.delivery_boy_id,
+                    {
+                        orderId: candidate.order_id,
+                        assignmentId: candidate.assignment_id,
+                        attemptNo: candidate.attempt_no,
+                        title: "🚚 Delivery Reminder",
+                        body: `Order #${candidate.order_id} is still waiting for your acceptance.`,
+                        tag: `delivery-reminder-${candidate.order_id}-attempt-${candidate.attempt_no}`,
+                        url: "/staff-dashboard"
+                    }
+                );
+            } catch (pushError) {
+                console.error("❌ REMINDER PUSH ERROR:", pushError);
+            }
+
+            console.log("📨 REMINDER PUSH RESULT:", pushResult);
+
+            if (!pushResult || pushResult.success !== true) {
+                // Retry only if the same attempt is still active.
+                try {
+                    await withTransaction(async connection => {
+                        const assignments = await query(
+                            connection,
+                            `
+                                SELECT id, status, delivery_boy_id
+                                FROM delivery_assignments
+                                WHERE id = ?
+                                FOR UPDATE
+                            `,
+                            [candidate.assignment_id]
+                        );
+
+                        if (
+                            !assignments.length ||
+                            assignments[0].status !== "Assigned" ||
+                            Number(assignments[0].delivery_boy_id) !==
+                                Number(candidate.delivery_boy_id)
+                        ) {
+                            return;
+                        }
+
+                        const attempts = await query(
+                            connection,
+                            `
+                                SELECT id, status
+                                FROM delivery_assignment_attempts
+                                WHERE id = ?
+                                FOR UPDATE
+                            `,
+                            [candidate.attempt_id]
+                        );
+
+                        if (
+                            !attempts.length ||
+                            attempts[0].status !== "Reminded"
+                        ) {
+                            return;
+                        }
+
+                        await query(
+                            connection,
+                            `
+                                UPDATE delivery_assignment_attempts
+                                SET status = 'Assigned',
+                                    reminded_at = NULL
+                                WHERE id = ?
+                                  AND status = 'Reminded'
+                            `,
+                            [candidate.attempt_id]
+                        );
+                    });
+
+                    console.log(
+                        "↩️ REMINDER PUSH FAILED — RETRY ENABLED",
+                        candidate.order_id
+                    );
+                } catch (retryError) {
+                    console.error(
+                        "❌ REMINDER RETRY RESET ERROR:",
+                        retryError
+                    );
+                }
+            }
+        } catch (err) {
             console.error(
-                "❌ REMINDER PUSH ERROR:",
-                pushError
+                "❌ REMINDER PROCESS ERROR:",
+                candidate.order_id,
+                err
             );
-
-try{}
-            catch (pushError) {
-
-    console.error(
-        "❌ REMINDER PUSH ERROR:",
-        pushError
-    );
-
-    console.log(
-        "ℹ️ REMINDER REMAINS 'Reminded' — escalation timer continues"
-    );
-}
-        
         }
-
     }
-
 };
 
-
 // ======================================================
-// 🚨 STEP 2
-// AFTER REMINDER + 10 MIN
-// EXPIRE OLD BOY
-// FIND NEXT AVAILABLE BOY
+// STEP 2: REASSIGN AFTER 5 MINUTES FROM REMINDER
 // ======================================================
 
 const processEscalations = async () => {
-
-    const sql = `
-
-        SELECT
-
-            aa.id AS attempt_id,
-            aa.order_id,
-            aa.delivery_boy_id,
-            aa.attempt_no,
-            aa.reminded_at,
-
-            da.id AS assignment_id,
-            da.status AS assignment_status
-
-        FROM delivery_assignment_attempts aa
-
-        INNER JOIN delivery_assignments da
-            ON da.order_id = aa.order_id
-
-        INNER JOIN orders o
-            ON o.id = aa.order_id
-
-        WHERE aa.status = 'Reminded'
-
-        AND aa.reminded_at IS NOT NULL
-
-        AND da.status = 'Assigned'
-
-        AND o.order_type = 'Delivery'
-
-        AND o.order_status NOT IN (
-            'Completed',
-            'Cancelled'
-        )
-
- AND aa.reminded_at <= DATE_SUB(
-    UTC_TIMESTAMP(),
-    INTERVAL 5 MINUTE
-)
-
-        AND NOT EXISTS (
-            SELECT 1
-            FROM delivery_assignment_attempts newer
-            WHERE newer.order_id = aa.order_id
-            AND newer.attempt_no > aa.attempt_no
-        )
-
-        ORDER BY aa.reminded_at ASC
-
-    `;
-
-
-    let rows;
+    let candidates;
 
     try {
-
-        rows = await queryDB(sql);
-
-    }
-    catch (err) {
-
-        console.error(
-            "❌ DELIVERY ESCALATION QUERY ERROR:",
-            err
+        candidates = await query(
+            db,
+            `
+                SELECT
+                    aa.id AS attempt_id,
+                    aa.order_id,
+                    aa.delivery_boy_id,
+                    aa.attempt_no,
+                    da.id AS assignment_id
+                FROM delivery_assignment_attempts aa
+                INNER JOIN delivery_assignments da
+                    ON da.order_id = aa.order_id
+                WHERE aa.status = 'Reminded'
+                  AND aa.reminded_at IS NOT NULL
+                  AND da.status = 'Assigned'
+                  AND aa.reminded_at <= DATE_SUB(
+                      UTC_TIMESTAMP(),
+                      INTERVAL ? MINUTE
+                  )
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM delivery_assignment_attempts newer
+                      WHERE newer.order_id = aa.order_id
+                        AND (
+                            newer.attempt_no > aa.attempt_no
+                            OR (
+                                newer.attempt_no = aa.attempt_no
+                                AND newer.id > aa.id
+                            )
+                        )
+                  )
+                ORDER BY aa.reminded_at ASC
+            `,
+            [ESCALATION_MINUTES]
         );
-
+    } catch (err) {
+        console.error("❌ ESCALATION CANDIDATE QUERY ERROR:", err);
         return;
     }
 
-
-    console.log(
-        "🔍 ESCALATION CANDIDATES =",
-        rows.length
-    );
-
-
-    if (!rows.length) {
-
-        console.log(
-            "✅ NO DELIVERY ESCALATION REQUIRED"
-        );
-
-        return;
-    }
-
-
-    for (const assignment of rows) {
-
-        console.log("");
-        console.log(
-            "🚨 DELIVERY ESCALATION STARTED"
-        );
-
-        console.log(
-            "📦 ORDER ID =",
-            assignment.order_id
-        );
-
-        console.log(
-            "👤 OLD DELIVERYBOY ID =",
-            assignment.delivery_boy_id
-        );
-
-        console.log(
-            "🔢 OLD ATTEMPT NO =",
-            assignment.attempt_no
-        );
-
-
-        // ==================================================
-        // FIND NEXT AVAILABLE DELIVERY BOY
-        // ==================================================
-
-        let nextBoyRows;
+    for (const candidate of candidates) {
+        let result;
 
         try {
+            result = await withTransaction(async connection => {
+                // Same lock order as acceptDelivery:
+                // assignment first, then latest attempt.
+                const assignments = await query(
+                    connection,
+                    `
+                        SELECT id, order_id, delivery_boy_id, status
+                        FROM delivery_assignments
+                        WHERE id = ?
+                        FOR UPDATE
+                    `,
+                    [candidate.assignment_id]
+                );
 
-            nextBoyRows = await queryDB(
+                if (!assignments.length) return null;
 
-                `
-                    SELECT
-                        s.id,
-                        s.status,
-                        s.online_status,
-                        s.on_leave,
-                        s.work_start_time,
-                        s.work_end_time
+                const assignment = assignments[0];
 
-                    FROM staff s
+                if (
+                    assignment.status !== "Assigned" ||
+                    Number(assignment.delivery_boy_id) !==
+                        Number(candidate.delivery_boy_id)
+                ) {
+                    return null;
+                }
 
-                    WHERE s.role = 'DeliveryBoy'
+                const attempts = await query(
+                    connection,
+                    `
+                        SELECT *
+                        FROM delivery_assignment_attempts
+                        WHERE id = ?
+                        FOR UPDATE
+                    `,
+                    [candidate.attempt_id]
+                );
 
-                    AND s.status = 'Active'
+                if (!attempts.length) return null;
 
-                    AND s.online_status = 'Online'
+                const attempt = attempts[0];
 
-                    AND s.on_leave = 0
+                if (
+                    attempt.status !== "Reminded" ||
+                    !attempt.reminded_at ||
+                    Number(attempt.delivery_boy_id) !==
+                        Number(candidate.delivery_boy_id)
+                ) {
+                    return null;
+                }
 
-                    AND TIME(
-                        DATE_ADD(
+                const latest = await query(
+                    connection,
+                    `
+                        SELECT id
+                        FROM delivery_assignment_attempts
+                        WHERE order_id = ?
+                        ORDER BY attempt_no DESC, id DESC
+                        LIMIT 1
+                    `,
+                    [candidate.order_id]
+                );
+
+                if (
+                    !latest.length ||
+                    Number(latest[0].id) !== Number(candidate.attempt_id)
+                ) {
+                    return null;
+                }
+
+                const orders = await query(
+                    connection,
+                    `
+                        SELECT id, order_type, order_status
+                        FROM orders
+                        WHERE id = ?
+                        FOR UPDATE
+                    `,
+                    [candidate.order_id]
+                );
+
+                if (!isActiveOrder(orders[0])) return null;
+
+                const elapsed = await query(
+                    connection,
+                    `
+                        SELECT reminded_at <= DATE_SUB(
                             UTC_TIMESTAMP(),
-                            INTERVAL 330 MINUTE
-                        )
-                    )
-                    BETWEEN
-                        s.work_start_time
-                    AND
-                        s.work_end_time
-
-                    AND NOT EXISTS (
-                        SELECT 1
-                        FROM delivery_assignments da2
-
-                        WHERE da2.delivery_boy_id = s.id
-
-                        AND da2.status IN (
-                            'Assigned',
-                            'Accepted',
-                            'OutForDelivery'
-                        )
-                    )
-
-                  
-
-                    ORDER BY s.id ASC
-
-                    LIMIT 1
-                `,
-
-                [
-                    assignment.order_id
-                ]
-
-            );
-
-        }
-        catch (err) {
-
-            console.error(
-                "❌ NEXT DELIVERY BOY QUERY ERROR:",
-                err
-            );
-
-            continue;
-        }
-
-
-        // ==================================================
-        // NO NEXT BOY
-        // ==================================================
-
-        if (!nextBoyRows.length) {
-
-            console.log(
-                "⏳ NO NEXT DELIVERY BOY AVAILABLE RIGHT NOW"
-            );
-
-            console.log(
-                "📌 CURRENT ASSIGNMENT REMAINS WITH OLD DELIVERY BOY"
-            );
-
-            continue;
-        }
-
-
-        const nextBoy =
-            nextBoyRows[0];
-
-
-        console.log(
-            "✅ NEXT DELIVERY BOY FOUND =",
-            nextBoy.id
-        );
-
-
-        // ==================================================
-        // EXPIRE OLD ATTEMPT
-        // ==================================================
-
-        let expireResult;
-
-        try {
-
-            expireResult = await queryDB(
-
-                `
-                    UPDATE delivery_assignment_attempts
-
-                    SET
-                        status = 'Expired',
-                        expired_at = UTC_TIMESTAMP()
-
-                    WHERE id = ?
-
-                    AND status = 'Reminded'
-
-                    AND reminded_at IS NOT NULL
-
-                    AND reminded_at <= DATE_SUB(
-                        UTC_TIMESTAMP(),
-                        INTERVAL 5 MINUTE
-                    )
-                `,
-
-                [
-                    assignment.attempt_id
-                ]
-
-            );
-
-        }
-        catch (err) {
-
-            console.error(
-                "❌ OLD ATTEMPT EXPIRE ERROR:",
-                err
-            );
-
-            continue;
-        }
-
-
-        if (
-            expireResult.affectedRows === 0
-        ) {
-
-            console.log(
-                "ℹ️ ESCALATION ALREADY PROCESSED"
-            );
-
-            continue;
-        }
-
-
-
-        // ==================================================
-        // UPDATE SAME DELIVERY ASSIGNMENT ROW
-        // ==================================================
-
-        let assignmentUpdate;
-
-        try {
-
-            assignmentUpdate = await queryDB(
-
-                `
-                    UPDATE delivery_assignments
-
-                    SET
-                        delivery_boy_id = ?,
-                        status = 'Assigned',
-                        assigned_at = UTC_TIMESTAMP(),
-                        accepted_at = NULL
-
-                    WHERE id = ?
-
-                    AND order_id = ?
-
-                    AND delivery_boy_id = ?
-
-                    AND status = 'Assigned'
-                `,
-
-                [
-
-                    nextBoy.id,
-
-                    assignment.assignment_id,
-
-                    assignment.order_id,
-
-                    assignment.delivery_boy_id
-
-                ]
-
-            );
-
-        }
-        catch (err) {
-
-            console.error(
-                "❌ ASSIGNMENT UPDATE ERROR:",
-                err
-            );
-
-            // restore old attempt if assignment update failed
-            try {
-
-                await queryDB(
-
+                            INTERVAL ? MINUTE
+                        ) AS ready
+                        FROM delivery_assignment_attempts
+                        WHERE id = ?
+                    `,
+                    [ESCALATION_MINUTES, candidate.attempt_id]
+                );
+
+                if (!elapsed[0] || !elapsed[0].ready) return null;
+
+                // Find and lock the next eligible Delivery Boy.
+                const nextBoys = await query(
+                    connection,
+                    `
+                        SELECT
+                            s.id
+                        FROM staff s
+                        WHERE s.role = 'DeliveryBoy'
+                          AND s.status = 'Active'
+                          AND s.online_status = 'Online'
+                          AND s.on_leave = 0
+                          AND TIME(
+                              DATE_ADD(
+                                  UTC_TIMESTAMP(),
+                                  INTERVAL ? MINUTE
+                              )
+                          ) BETWEEN s.work_start_time AND s.work_end_time
+                          AND s.id <> ?
+                          AND NOT EXISTS (
+                              SELECT 1
+                              FROM delivery_assignments da2
+                              WHERE da2.delivery_boy_id = s.id
+                                AND da2.status IN (
+                                    'Assigned',
+                                    'Accepted',
+                                    'OutForDelivery'
+                                )
+                          )
+                        ORDER BY s.id ASC
+                        LIMIT 1
+                        FOR UPDATE
+                    `,
+                    [IST_OFFSET_MINUTES, candidate.delivery_boy_id]
+                );
+
+                // Expire the old attempt.
+                const expired = await query(
+                    connection,
                     `
                         UPDATE delivery_assignment_attempts
-
-                        SET
-                            status = 'Reminded',
-                            expired_at = NULL
-
+                        SET status = 'Expired',
+                            expired_at = UTC_TIMESTAMP()
                         WHERE id = ?
-
-                        AND status = 'Expired'
+                          AND status = 'Reminded'
                     `,
+                    [candidate.attempt_id]
+                );
 
+                if (expired.affectedRows !== 1) return null;
+
+                // No available Boy: cancel assignment.
+                if (!nextBoys.length) {
+                    const cancelled = await query(
+                        connection,
+                        `
+                            UPDATE delivery_assignments
+                            SET status = 'Cancelled'
+                            WHERE id = ?
+                              AND status = 'Assigned'
+                              AND delivery_boy_id = ?
+                        `,
+                        [
+                            candidate.assignment_id,
+                            candidate.delivery_boy_id
+                        ]
+                    );
+
+                    if (cancelled.affectedRows !== 1) {
+                        throw new Error(
+                            "Assignment changed while cancelling"
+                        );
+                    }
+
+                    return {
+                        type: "no_boy",
+                        oldBoyId: candidate.delivery_boy_id,
+                        assignmentId: candidate.assignment_id,
+                        attemptNo: candidate.attempt_no
+                    };
+                }
+
+                const nextBoyId = nextBoys[0].id;
+                const newAttemptNo = Number(attempt.attempt_no) + 1;
+
+                const updated = await query(
+                    connection,
+                    `
+                        UPDATE delivery_assignments
+                        SET delivery_boy_id = ?,
+                            status = 'Assigned',
+                            assigned_at = UTC_TIMESTAMP(),
+                            accepted_at = NULL
+                        WHERE id = ?
+                          AND status = 'Assigned'
+                          AND delivery_boy_id = ?
+                    `,
                     [
-                        assignment.attempt_id
+                        nextBoyId,
+                        candidate.assignment_id,
+                        candidate.delivery_boy_id
                     ]
-
                 );
 
-            }
-            catch (restoreError) {
+                if (updated.affectedRows !== 1) {
+                    throw new Error(
+                        "Assignment changed during reassignment"
+                    );
+                }
 
-                console.error(
-                    "❌ ATTEMPT RESTORE ERROR:",
-                    restoreError
+                const inserted = await query(
+                    connection,
+                    `
+                        INSERT INTO delivery_assignment_attempts
+                        (
+                            order_id,
+                            delivery_boy_id,
+                            attempt_no,
+                            assigned_at,
+                            status
+                        )
+                        VALUES (?, ?, ?, UTC_TIMESTAMP(), 'Assigned')
+                    `,
+                    [
+                        candidate.order_id,
+                        nextBoyId,
+                        newAttemptNo
+                    ]
                 );
 
-            }
-
-            continue;
-        }
-
-
-        if (
-            assignmentUpdate.affectedRows === 0
-        ) {
-
-            console.log(
-                "⚠️ ASSIGNMENT NO LONGER ASSIGNED TO OLD DELIVERY BOY"
-            );
-
-            continue;
-        }
-
-
-        console.log(
-            "✅ SAME ASSIGNMENT ROW UPDATED"
-        );
-
-        console.log(
-            "🆔 ASSIGNMENT ID =",
-            assignment.assignment_id
-        );
-
-        console.log(
-            "👤 NEW DELIVERYBOY ID =",
-            nextBoy.id
-        );
-
-
-        // ==================================================
-        // CREATE NEW ATTEMPT
-        // ==================================================
-
-        const newAttemptNo =
-            Number(assignment.attempt_no) + 1;
-
-
-        let newAttemptResult;
-
-        try {
-
-            newAttemptResult = await queryDB(
-
-                `
-                    INSERT INTO delivery_assignment_attempts
-                    (
-                        order_id,
-                        delivery_boy_id,
-                        attempt_no,
-                        assigned_at,
-                        status
-                    )
-
-                    VALUES (
-                        ?,
-                        ?,
-                        ?,
-                        UTC_TIMESTAMP(),
-                        'Assigned'
-                    )
-                `,
-
-                [
-
-                    assignment.order_id,
-
-                    nextBoy.id,
-
-                    newAttemptNo
-
-                ]
-
-            );
-
-        }
-        catch (err) {
-
+                return {
+                    type: "reassigned",
+                    oldBoyId: candidate.delivery_boy_id,
+                    newBoyId: nextBoyId,
+                    assignmentId: candidate.assignment_id,
+                    attemptNo: newAttemptNo,
+                    newAttemptId: inserted.insertId
+                };
+            });
+        } catch (err) {
             console.error(
-                "❌ NEW ATTEMPT INSERT ERROR:",
+                "❌ ESCALATION TRANSACTION ERROR:",
+                candidate.order_id,
                 err
             );
 
             continue;
         }
 
+        if (!result) continue;
 
-        console.log(
-            "✅ NEW DELIVERY ATTEMPT CREATED"
-        );
+        if (result.type === "no_boy") {
+            console.log(
+                "⏳ NO NEXT DELIVERY BOY — ASSIGNMENT CANCELLED:",
+                candidate.order_id
+            );
 
-        console.log(
-            "🆔 NEW ATTEMPT ID =",
-            newAttemptResult.insertId
-        );
-
-        console.log(
-            "🔢 NEW ATTEMPT NO =",
-            newAttemptNo
-        );
-// ==================================================
-// 🔔 NOTIFY OLD DELIVERY BOY ABOUT REJECTION
-// ==================================================
-
-try {
-
-    const rejectionPushResult =
-        await sendPushToDeliveryBoy(
-
-            assignment.delivery_boy_id,
-
-            {
-                orderId:
-                    assignment.order_id,
-
-                assignmentId:
-                    assignment.assignment_id,
-
-                attemptNo:
-                    assignment.attempt_no,
-
-                title:
-                    "❌ Delivery Assignment Rejected",
-
-                body:
-                    `Order #${assignment.order_id} has been rejected from you because you did not accept it within the allowed time.`,
-
-                tag:
-                    `delivery-rejected-${assignment.order_id}-attempt-${assignment.attempt_no}`,
-
-                url:
-                    "/staff-dashboard"
-
+            try {
+                await sendPushToDeliveryBoy(result.oldBoyId, {
+                    orderId: candidate.order_id,
+                    assignmentId: result.assignmentId,
+                    attemptNo: result.attemptNo,
+                    title: "❌ Delivery Assignment Expired",
+                    body: `Order #${candidate.order_id} is no longer assigned to you.`,
+                    tag: `delivery-rejected-${candidate.order_id}-attempt-${result.attemptNo}`,
+                    url: "/staff-dashboard"
+                });
+            } catch (err) {
+                console.error("❌ EXPIRY PUSH ERROR:", err);
             }
 
+            continue;
+        }
+
+        console.log(
+            "✅ ORDER REASSIGNED:",
+            candidate.order_id,
+            "NEW BOY:",
+            result.newBoyId,
+            "ATTEMPT:",
+            result.attemptNo
         );
 
-    console.log(
-        "📨 OLD DELIVERY BOY REJECTION PUSH =",
-        rejectionPushResult
-    );
-
-}
-catch (rejectionError) {
-
-    console.error(
-        "❌ OLD DELIVERY BOY REJECTION PUSH ERROR:",
-        rejectionError
-    );
-
-}
-
-        // ==================================================
-        // SEND IMMEDIATE PUSH TO NEXT BOY
-        // ==================================================
-
+        // Notifications are sent only after the transaction commits.
         try {
+            await sendPushToDeliveryBoy(result.oldBoyId, {
+                orderId: candidate.order_id,
+                assignmentId: result.assignmentId,
+                attemptNo: candidate.attempt_no,
+                title: "❌ Delivery Assignment Expired",
+                body: `Order #${candidate.order_id} is no longer assigned to you.`,
+                tag: `delivery-rejected-${candidate.order_id}-attempt-${candidate.attempt_no}`,
+                url: "/staff-dashboard"
+            });
+        } catch (err) {
+            console.error("❌ OLD DELIVERY BOY PUSH ERROR:", err);
+        }
+        let pushResult = null;
+        let pushRetryCount = 0;
+        const maxPushAttempts = 2;
 
-            const pushResult =
-                await sendPushToDeliveryBoy(
-
-                    nextBoy.id,
-
+        while (pushRetryCount < maxPushAttempts) {
+            try {
+                pushResult = await sendPushToDeliveryBoy(
+                    result.newBoyId,
                     {
-
-                        orderId:
-                            assignment.order_id,
-
-                        assignmentId:
-                            assignment.assignment_id,
-
-                        attemptNo:
-                            newAttemptNo,
-
-                        title:
-                            "🚚 New Delivery Order",
-
-                        body:
-                            `Order #${assignment.order_id} has been assigned to you.`,
-
-                        tag:
-                            `delivery-order-${assignment.order_id}-attempt-${newAttemptNo}`,
-
-                        url:
-                            "/staff-dashboard"
-
+                        orderId: candidate.order_id,
+                        assignmentId: result.assignmentId,
+                        attemptNo: result.attemptNo,
+                        title: "🚚 New Delivery Order",
+                        body: `Order #${candidate.order_id} has been assigned to you.`,
+                        tag: `delivery-order-${candidate.order_id}-attempt-${result.attemptNo}`,
+                        url: "/staff-dashboard"
                     }
-
                 );
 
+                if (pushResult?.success === true) {
+                    console.log("NEW DELIVERY BOY PUSH SUCCESS:", pushResult);
+                    break;
+                }
 
-            console.log(
-                "📨 NEXT DELIVERY BOY PUSH RESULT =",
-                pushResult
-            );
+                if (!pushResult?.subscriptionsFound) {
+                    console.error("PUSH RETRY SKIPPED — NO SUBSCRIPTION");
+                    break;
+                }
 
-        }
-        catch (pushError) {
+                throw new Error("All delivery push notifications failed");
 
-            console.error(
-                "❌ NEXT DELIVERY BOY PUSH ERROR:",
-                pushError
-            );
+            } catch (err) {
+                pushRetryCount++;
 
+                console.error(
+                    "NEW DELIVERY BOY PUSH ATTEMPT FAILED:",
+                    pushRetryCount,
+                    err
+                );
+
+                if (pushRetryCount < maxPushAttempts) {
+                    await new Promise(resolve => setTimeout(resolve, 2000));
+                }
+            }
         }
 
     }
-
 };
 
-
 // ======================================================
-// 🚀 MAIN ESCALATION CHECK
+// MAIN ESCALATION CHECK
 // ======================================================
 
 exports.checkDeliveryAssignmentEscalation = async () => {
-
     console.log("");
     console.log("================================================");
     console.log("🚚 DELIVERY ESCALATION CHECK");
     console.log("================================================");
 
-    try {
-
-        await processReminders();
-
-        await processEscalations();
-
-    }
-    catch (err) {
-
-        console.error(
-            "❌ DELIVERY ESCALATION SERVICE ERROR:",
-            err
-        );
-
-    }
-
+    await processReminders();
+    await processEscalations();
 };
