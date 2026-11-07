@@ -1117,25 +1117,7 @@ localStorage.setItem(
                     <br />
                     <br />
 
-                    <button
-                        type="button"
-                        onClick={async () => {
-                            const orderConfirmed = await confirmOrder();
-
-                            if (orderConfirmed) {
-                                setPaymentDone(true);
-                            }
-                        }}
-                        disabled={
-                            cartItems.length ===
-                                0 ||
-                            paymentDone
-                        }
-                    >
-                        {paymentDone
-                            ? "✅ Payment Submitted"
-                            : "✅ I Have Paid"}
-                    </button>
+                    
                 </div>
             )}
 
@@ -1349,22 +1331,36 @@ localStorage.setItem(
             {/* ==================================================
                 CONFIRM ORDER
             ================================================== */}
+{/* CONFIRM ORDER - BOTH CASH AND UPI */}
 
-            {paymentMethod ===
-                "Cash" && (
-                <button
-                    type="button"
-                    onClick={
-                        confirmOrder
-                    }
-                    disabled={
-                        cartItems.length ===
-                        0
-                    }
-                >
-                    ✅ Confirm Order
-                </button>
-            )}
+<button
+    type="button"
+    onClick={confirmOrder}
+    disabled={
+        cartItems.length === 0 ||
+        !whatsappConfirmed
+    }
+    style={{
+        width: "100%",
+        marginTop: "15px",
+        padding: "14px",
+        background: whatsappConfirmed
+            ? "#198754"
+            : "#999",
+        color: "#fff",
+        border: "none",
+        borderRadius: "10px",
+        fontSize: "16px",
+        fontWeight: "bold",
+        cursor: whatsappConfirmed
+            ? "pointer"
+            : "not-allowed"
+    }}
+>
+    {paymentMethod === "Cash"
+        ? "✅ Confirm Cash Order"
+        : "✅ I Have Paid — Confirm UPI Order"}
+</button>
 
 <button
     type="button"
