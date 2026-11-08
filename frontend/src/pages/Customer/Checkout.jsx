@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import api from "../../Services/api.js";
 import { useNavigate } from "react-router-dom";
 import "./Checkout.css";
-
+import QRCode from "qrcode";
 function Checkout() {
     const navigate = useNavigate();
 
@@ -41,6 +41,8 @@ const [deliveryLandmarkName, setDeliveryLandmarkName] = useState("");
     const [paymentMethod, setPaymentMethod] = useState("Cash");
     const [paymentDone, setPaymentDone] = useState(false);
 const [whatsappConfirmed, setWhatsappConfirmed] = useState(false);
+const [showQrCode, setShowQrCode] = useState(false);
+const [qrCodeDataUrl, setQrCodeDataUrl] = useState("");
     // ======================================================
     // LOAD CART
     // ======================================================
@@ -291,11 +293,55 @@ else if (foodTotal < 2000) {
 const total =
     foodTotal +
     deliveryFee;
+const buildUpiLink = () => {
+    const amount = Number(total);
 
+    if (!Number.isFinite(amount) || amount <= 0) {
+        return null;
+    }
+
+    const params = new URLSearchParams({
+        pa: "Q015676127@ybl",
+        pn: "Jana Food Hub Restaurant",
+        tn: "Jana Food Hub Order Payment",
+        am: amount.toFixed(2),
+        cu: "INR"
+    });
+
+    return `upi://pay?${params.toString()}`;
+};
     // ======================================================
     // UPI PAYMENT
     // ======================================================
+useEffect(() => {
+    const generateQrCode = async () => {
+        if (paymentMethod !== "UPI" || !showQrCode) {
+            return;
+        }
 
+        const upiLink = buildUpiLink();
+
+        if (!upiLink) {
+            setQrCodeDataUrl("");
+            return;
+        }
+
+        try {
+            const qrImage = await QRCode.toDataURL(upiLink, {
+                errorCorrectionLevel: "M",
+                margin: 2,
+                width: 260
+            });
+
+            setQrCodeDataUrl(qrImage);
+        } catch (error) {
+            console.error("QR Generation Error:", error);
+            setQrCodeDataUrl("");
+        }
+    };
+
+    generateQrCode();
+}, [paymentMethod, showQrCode, total]);
 const OWNER_WHATSAPP = "918670334666";
 
 const openOwnerWhatsApp = () => {
@@ -349,32 +395,16 @@ const openOwnerWhatsApp = () => {
     window.open(whatsappUrl, "_blank", "noopener,noreferrer");
 };
 
-    const payNow = () => {
-        const upiId = "Q015676127@ybl";
+const payNow = () => {
+    const upiLink = buildUpiLink();
 
-        const shopName =
-            "JANA FOOD HUB";
+    if (!upiLink) {
+        alert("Invalid payment amount.");
+        return;
+    }
 
-        const amount = Number(total).toFixed(2);
-
-        const upiLink =
-            `upi://pay?pa=${upiId}` +
-            `&pn=${encodeURIComponent(shopName)}` +
-            `&am=${amount}` +
-            `&cu=INR`;
-
-        alert(
-            "Please complete the payment using your UPI app."
-        );
-console.log("UPI PAYMENT DEBUG:", {
-    upiId,
-    shopName,
-    amount,
-    upiLink
-});
-console.log("Generated UPI Link:", upiLink);
-        window.location.href = upiLink;
-    };
+    window.location.href = upiLink;
+};
 
     // ======================================================
     // CONFIRM ORDER
@@ -1066,60 +1096,61 @@ localStorage.setItem(
                 UPI
             ================================================== */}
 
-            {paymentMethod ===
-                "UPI" && (
-                <div
-                    style={{
-                        marginTop:
-                            "15px",
-                        padding:
-                            "15px",
-                        background:
-                            "#d4edda",
-                        borderRadius:
-                            "10px",
-                    }}
-                >
-                    <h3>
-                        📱 UPI Payment
-                    </h3>
+{paymentMethod === "UPI" && (
+    <div
+        style={{
+            marginTop: "15px",
+            padding: "15px",
+            background: "#d4edda",
+            borderRadius: "10px"
+        }}
+    >
+        <h3>📱 UPI Payment</h3>
 
-                    <p>
-                        Shop UPI ID
-                    </p>
+        <p>Shop UPI ID</p>
+        <h2>Q015676127@ybl</h2>
 
-                  <h2>Q015676127@ybl</h2> 
+        <p>Payment Amount: ₹{Number(total).toFixed(2)}</p>
 
+        <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+            <button type="button" onClick={payNow}>
+                💳 Pay Now
+            </button>
+
+            <button
+                type="button"
+                onClick={() => setShowQrCode(prev => !prev)}
+            >
+                {showQrCode ? "Hide QR Code" : "📷 Show QR Code"}
+            </button>
+        </div>
+
+        {showQrCode && (
+            <div style={{ marginTop: "15px", textAlign: "center" }}>
+                <h4>Scan to Pay</h4>
+
+                {qrCodeDataUrl ? (
                     <img
-                        src="/upi-qr.jpeg"
-    alt="Jana Food Hub UPI QR Code"
+                        src={qrCodeDataUrl}
+                        alt="Dynamic Jana Food Hub UPI QR Code"
                         style={{
-                            width:
-                                "220px",
-                            margin:
-                                "15px 0",
-                            border:
-                                "1px solid #ddd",
-                            borderRadius:
-                                "10px",
+                            width: "260px",
+                            maxWidth: "100%",
+                            border: "1px solid #ddd",
+                            borderRadius: "10px",
+                            background: "#fff"
                         }}
                     />
+                ) : (
+                    <p>Generating QR Code...</p>
+                )}
 
-                    <button
-                        type="button"
-                        onClick={
-                            payNow
-                        }
-                    >
-                        💳 Pay Now
-                    </button>
+                <p>Amount: ₹{Number(total).toFixed(2)}</p>
+            </div>
+        )}
+    </div>
+)}
 
-                    <br />
-                    <br />
-
-                    
-                </div>
-            )}
 
             {/* ==================================================
                 SPECIAL INSTRUCTION
