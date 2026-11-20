@@ -1,97 +1,144 @@
+
 const express = require("express");
 const router = express.Router();
+
 const webPush = require("../config/webPush");
 const db = require("../config/db");
+const authMiddleware = require("../middleware/authMiddleware");
 
 // ==========================================
 // SAVE PUSH SUBSCRIPTION
+// One endpoint = one Staff ID
+// Multiple endpoints per Staff ID allowed
 // ==========================================
 
-router.post("/subscribe", (req, res) => {
-   console.log("🚨 PUSH SUBSCRIBE ROUTE HIT");
-    console.log("🚨 PUSH SUBSCRIBE BODY =", req.body);
-    const {
-        staff_id,
-        subscription
-    } = req.body;
+router.post("/subscribe", authMiddleware, (req, res) => {
+
+    const staffId = Number(req.user?.id);
+
+    const { staff_id, subscription } = req.body;
+
+    if (!staffId || !Number.isInteger(staffId)) {
+        return res.status(401).json({
+            success: false,
+            message: "Invalid authenticated staff"
+        });
+    }
+
+    // Request body Staff ID must match JWT Staff ID
+    if (Number(staff_id) !== staffId) {
+        return res.status(403).json({
+            success: false,
+            message: "Staff ID does not match authenticated user"
+        });
+    }
 
     if (
-        !staff_id ||
         !subscription ||
         !subscription.endpoint ||
         !subscription.keys ||
         !subscription.keys.p256dh ||
         !subscription.keys.auth
     ) {
-
         return res.status(400).json({
             success: false,
-            message:
-                "Invalid push subscription data"
+            message: "Invalid push subscription data"
         });
     }
 
-    const sql = `
-        INSERT INTO push_subscriptions
-        (
-            staff_id,
-            endpoint,
-            p256dh,
-            auth
-        )
-        VALUES (?, ?, ?, ?)
-        ON DUPLICATE KEY UPDATE
-            staff_id = VALUES(staff_id),
-            p256dh = VALUES(p256dh),
-            auth = VALUES(auth)
+    const endpoint = subscription.endpoint;
+
+    // Remove this endpoint from every OTHER Staff ID.
+    // Keep other devices belonging to the same Staff ID.
+    const deleteSql = `
+        DELETE FROM push_subscriptions
+        WHERE endpoint = ?
+        AND staff_id <> ?
     `;
 
     db.query(
-        sql,
-        [
-            staff_id,
-            subscription.endpoint,
-            subscription.keys.p256dh,
-            subscription.keys.auth
-        ],
-        (err, result) => {
+        deleteSql,
+        [endpoint, staffId],
+        (deleteErr) => {
 
-            if (err) {
-
+            if (deleteErr) {
                 console.error(
-                    "❌ PUSH SUBSCRIPTION SAVE ERROR:",
-                    err
+                    "PUSH ENDPOINT CLEANUP ERROR:",
+                    deleteErr.message
                 );
 
                 return res.status(500).json({
                     success: false,
-                    message:
-                        "Failed to save push subscription",
-                    error:
-                        err.message
+                    message: "Failed to update push endpoint ownership"
                 });
             }
 
-            return res.json({
-                success: true,
-                message:
-                    "Push subscription saved successfully"
-            });
+            const insertSql = `
+                INSERT INTO push_subscriptions
+                (
+                    staff_id,
+                    endpoint,
+                    p256dh,
+                    auth
+                )
+                VALUES (?, ?, ?, ?)
+                ON DUPLICATE KEY UPDATE
+                    p256dh = VALUES(p256dh),
+                    auth = VALUES(auth)
+            `;
+
+            db.query(
+                insertSql,
+                [
+                    staffId,
+                    endpoint,
+                    subscription.keys.p256dh,
+                    subscription.keys.auth
+                ],
+                (insertErr) => {
+
+                    if (insertErr) {
+                        console.error(
+                            "PUSH SUBSCRIPTION SAVE ERROR:",
+                            insertErr.message
+                        );
+
+                        return res.status(500).json({
+                            success: false,
+                            message: "Failed to save push subscription"
+                        });
+                    }
+
+                    return res.json({
+                        success: true,
+                        message: "Push subscription saved successfully",
+                        staff_id: staffId
+                    });
+                }
+            );
         }
     );
 });
+
+
 // ==========================================
-// 🧪 TEST PUSH NOTIFICATION
+// TEST PUSH NOTIFICATION
+// Staff can test only their own subscription
 // ==========================================
 
-router.post("/test/:staffId", (req, res) => {
+router.post("/test/:staffId", authMiddleware, (req, res) => {
 
     const staffId = Number(req.params.staffId);
+    const authenticatedStaffId = Number(req.user?.id);
 
-    if (!staffId) {
-        return res.status(400).json({
+    if (
+        !staffId ||
+        !Number.isInteger(staffId) ||
+        staffId !== authenticatedStaffId
+    ) {
+        return res.status(403).json({
             success: false,
-            message: "Invalid staff ID"
+            message: "You can test only your own push subscription"
         });
     }
 
@@ -113,8 +160,7 @@ router.post("/test/:staffId", (req, res) => {
             if (err) {
                 return res.status(500).json({
                     success: false,
-                    message: "Failed to find push subscription",
-                    error: err.message
+                    message: "Failed to find push subscription"
                 });
             }
 
@@ -126,11 +172,11 @@ router.post("/test/:staffId", (req, res) => {
             }
 
             const payload = JSON.stringify({
-                title: "🔔 DokaanSathi TEST",
-                body: "Test 2: DeliveryBoy notification check.",
+                title: "DokaanSathi TEST",
+                body: "DeliveryBoy notification check.",
                 icon: "/favicon.svg",
                 badge: "/favicon.svg",
-                tag: "dokaansathi-test-2",
+                tag: "dokaansathi-test",
                 url: "/staff-dashboard"
             });
 
@@ -162,7 +208,7 @@ router.post("/test/:staffId", (req, res) => {
                 } catch (error) {
 
                     console.error(
-                        "❌ TEST PUSH ERROR:",
+                        "TEST PUSH ERROR:",
                         error.message
                     );
                 }
@@ -170,14 +216,14 @@ router.post("/test/:staffId", (req, res) => {
 
             return res.json({
                 success: successCount > 0,
-                message:
-                    successCount > 0
-                        ? "Test push sent successfully"
-                        : "Test push failed",
+                message: successCount > 0
+                    ? "Test push sent successfully"
+                    : "Test push failed",
                 subscriptions_found: rows.length,
                 notifications_sent: successCount
             });
         }
     );
 });
+
 module.exports = router;
