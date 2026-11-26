@@ -1,7 +1,188 @@
+const { validateOrderItems } = require("../services/orderValidationService");
 const db = require("../config/db");
+
 const {
     sendPushToDeliveryBoy
 } = require("../services/deliveryPushService");
+
+const cancelInvalidDeliveryAssignment = async (
+    assignmentId,
+    orderId,
+    deliveryBoyId
+) => {
+    const connection = await new Promise((resolve, reject) => {
+        db.getConnection((err, conn) => {
+            if (err) return reject(err);
+            resolve(conn);
+        });
+    });
+
+    let transactionStarted = false;
+
+    const query = (sql, params = []) =>
+        new Promise((resolve, reject) => {
+            connection.query(sql, params, (err, result) => {
+                if (err) return reject(err);
+                resolve(result);
+            });
+        });
+
+    const rollback = () =>
+        new Promise(resolve => {
+            connection.rollback(() => resolve());
+        });
+
+    try {
+        await new Promise((resolve, reject) => {
+            connection.beginTransaction(err => {
+                if (err) return reject(err);
+                resolve();
+            });
+        });
+
+        transactionStarted = true;
+
+        // Lock the exact assignment first.
+        const assignmentRows = await query(
+            `
+                SELECT id, status
+                FROM delivery_assignments
+                WHERE id = ?
+                  AND order_id = ?
+                  AND delivery_boy_id = ?
+                FOR UPDATE
+            `,
+            [assignmentId, orderId, deliveryBoyId]
+        );
+
+        if (!assignmentRows.length) {
+            await rollback();
+            transactionStarted = false;
+
+            return {
+                cancelled: false,
+                status: null
+            };
+        }
+
+        const currentStatus = assignmentRows[0].status;
+
+        // Never release a boy who may already be carrying food.
+        if (!["Assigned", "Accepted"].includes(currentStatus)) {
+            await rollback();
+            transactionStarted = false;
+
+            return {
+                cancelled: false,
+                status: currentStatus
+            };
+        }
+
+        // Revalidate inside the transaction to avoid cancelling
+        // an order that became valid after the earlier check.
+        const validation = await validateOrderItems(
+            orderId,
+            connection
+        );
+
+        if (validation.valid) {
+            await rollback();
+            transactionStarted = false;
+
+            return {
+                cancelled: false,
+                status: currentStatus,
+                validationNowValid: true
+            };
+        }
+
+        // Lock the latest attempt belonging to this delivery boy.
+        const attemptRows = await query(
+            `
+                SELECT id, status
+                FROM delivery_assignment_attempts
+                WHERE order_id = ?
+                  AND delivery_boy_id = ?
+                ORDER BY attempt_no DESC, id DESC
+                LIMIT 1
+                FOR UPDATE
+            `,
+            [orderId, deliveryBoyId]
+        );
+
+        const updateResult = await query(
+            `
+                UPDATE delivery_assignments
+                SET status = 'Cancelled'
+                WHERE id = ?
+                  AND order_id = ?
+                  AND delivery_boy_id = ?
+                  AND status IN ('Assigned', 'Accepted')
+            `,
+            [assignmentId, orderId, deliveryBoyId]
+        );
+
+        if (updateResult.affectedRows !== 1) {
+            await rollback();
+            transactionStarted = false;
+
+            return {
+                cancelled: false,
+                status: currentStatus
+            };
+        }
+
+        if (
+            attemptRows.length &&
+            ["Assigned", "Reminded", "Accepted"].includes(
+                attemptRows[0].status
+            )
+        ) {
+            await query(
+                `
+                    UPDATE delivery_assignment_attempts
+                    SET status = 'Expired'
+                    WHERE id = ?
+                      AND order_id = ?
+                      AND delivery_boy_id = ?
+                      AND status IN ('Assigned', 'Reminded', 'Accepted')
+                `,
+                [
+                    attemptRows[0].id,
+                    orderId,
+                    deliveryBoyId
+                ]
+            );
+        }
+
+        await new Promise((resolve, reject) => {
+            connection.commit(err => {
+                if (err) return reject(err);
+                resolve();
+            });
+        });
+
+        transactionStarted = false;
+
+        return {
+            cancelled: true,
+            status: "Cancelled",
+            validationNowValid: false
+        };
+
+    } catch (error) {
+        if (transactionStarted) {
+            await rollback();
+            transactionStarted = false;
+        }
+
+        throw error;
+
+    } finally {
+        connection.release();
+    }
+};
+
 // ======================================================
 // CREATE DELIVERY ASSIGNMENT ATTEMPT
 // ======================================================
@@ -165,7 +346,8 @@ exports.autoAssignWaitingDelivery = (callback) => {
                 LEFT JOIN delivery_assignments da
                     ON da.order_id = o.id
 
-               WHERE o.order_type = 'Delivery'
+WHERE o.order_type = 'Delivery'
+AND COALESCE(o.is_deleted, 0) = 0
 AND o.order_status IN (
     'Pending',
     'Accepted',
@@ -180,13 +362,39 @@ AND o.order_status IN (
 
                 ORDER BY o.id ASC
 
-                LIMIT 1
+                LIMIT 100
 
-                FOR UPDATE
+FOR UPDATE
                 `
             );
+let selectedOrder = null;
 
-            if (!orderRows.length) {
+for (const candidate of orderRows) {
+    const validation = await validateOrderItems(
+        candidate.id,
+        connection
+    );
+
+    if (!validation.valid) {
+        console.warn(
+            "⚠️ INVALID DELIVERY ORDER SKIPPED:",
+            candidate.id,
+            validation.reason
+        );
+
+        continue;
+    }
+
+    selectedOrder = candidate;
+
+    console.log(
+        "✅ VALID DELIVERY ORDER FOUND:",
+        candidate.id
+    );
+
+    break;
+}
+            if (!selectedOrder) {
                 await new Promise((resolve, reject) => {
                     connection.commit(err => {
                         if (err) return reject(err);
@@ -202,7 +410,7 @@ AND o.order_status IN (
                 return callback(null, null);
             }
 
-            const order = orderRows[0];
+            const order = selectedOrder;
 
             console.log("📦 WAITING ORDER FOUND:", order.id);
 
@@ -210,46 +418,99 @@ AND o.order_status IN (
             // STEP 2: FIND AND LOCK AVAILABLE DELIVERY BOY
             // ==========================================
 
-            const boyRows = await query(
+            // Avoid immediately offering the same order back to the
+            // Delivery Boy whose previous attempt just expired.
+            const previousAttemptRows = await query(
                 `
-                SELECT
-                    s.id,
-                    s.name,
-                    s.phone
-
-                FROM staff s
-
-                WHERE s.role = 'DeliveryBoy'
-                AND s.status = 'Active'
-                AND s.online_status = 'Online'
-                AND s.on_leave = 0
-
-                AND ADDTIME(CURTIME(), '05:30:00')
-                    BETWEEN s.work_start_time
-                    AND s.work_end_time
-
-                AND NOT EXISTS (
-                    SELECT 1
-                    FROM delivery_assignments da2
-
-                    WHERE da2.delivery_boy_id = s.id
-
-                    AND da2.status IN (
-                        'Assigned',
-                        'Accepted',
-                        'OutForDelivery'
-                    )
-                )
-
-                ORDER BY s.id ASC
-
-                LIMIT 1
-
-                FOR UPDATE
-                `
+                    SELECT delivery_boy_id
+                    FROM delivery_assignment_attempts
+                    WHERE order_id = ?
+                    ORDER BY attempt_no DESC, id DESC
+                    LIMIT 1
+                    FOR UPDATE
+                `,
+                [order.id]
             );
 
-            if (!boyRows.length) {
+            const previousDeliveryBoyId = previousAttemptRows.length
+                ? Number(previousAttemptRows[0].delivery_boy_id)
+                : 0;
+
+            // Lock candidate staff rows in ascending ID order. After each
+            // staff-row lock, re-check active assignments with a current read.
+            let deliveryBoy = null;
+            let lastCheckedBoyId = 0;
+
+            while (true) {
+                const boyRows = await query(
+                    `
+                        SELECT
+                            s.id,
+                            s.name,
+                            s.phone
+                        FROM staff s
+                        WHERE s.id > ?
+                          AND s.id <> ?
+                          AND s.role = 'DeliveryBoy'
+                          AND s.status = 'Active'
+                          AND s.online_status = 'Online'
+                          AND s.on_leave = 0
+                          AND ADDTIME(UTC_TIME(), '05:30:00')
+                              BETWEEN s.work_start_time
+                              AND s.work_end_time
+                          AND NOT EXISTS (
+                              SELECT 1
+                              FROM delivery_assignments da2
+                              WHERE da2.delivery_boy_id = s.id
+                                AND da2.status IN (
+                                    'Assigned',
+                                    'Accepted',
+                                    'PickedUp',
+                                    'OutForDelivery'
+                                )
+                          )
+                        ORDER BY s.id ASC
+                        LIMIT 1
+                        FOR UPDATE
+                    `,
+                    [lastCheckedBoyId, previousDeliveryBoyId]
+                );
+
+                if (!boyRows.length) break;
+
+                const candidateBoy = boyRows[0];
+                lastCheckedBoyId = Number(candidateBoy.id);
+
+                const activeAssignmentsForBoy = await query(
+                    `
+                        SELECT id
+                        FROM delivery_assignments
+                        WHERE delivery_boy_id = ?
+                          AND status IN (
+                              'Assigned',
+                              'Accepted',
+                              'PickedUp',
+                              'OutForDelivery'
+                          )
+                        LIMIT 1
+                        FOR UPDATE
+                    `,
+                    [candidateBoy.id]
+                );
+
+                if (activeAssignmentsForBoy.length) {
+                    console.warn(
+                        "⏭️ DELIVERY BOY ALREADY HAS AN ACTIVE ORDER:",
+                        candidateBoy.id
+                    );
+                    continue;
+                }
+
+                deliveryBoy = candidateBoy;
+                break;
+            }
+
+            if (!deliveryBoy) {
 
                 await new Promise((resolve, reject) => {
                     connection.commit(err => {
@@ -265,8 +526,6 @@ AND o.order_status IN (
 
                 return callback(null, null);
             }
-
-            const deliveryBoy = boyRows[0];
 
             console.log(
                 "🚚 AVAILABLE DELIVERY BOY:",
@@ -494,495 +753,15 @@ AND o.order_status IN (
 // }
 // ======================================================
 
+
 exports.assignDeliveryBoy = (req, res) => {
-
-    const {
-        order_id
-    } = req.body;
-
-
-    // ==================================================
-    // STEP 1 : VALIDATION
-    // ==================================================
-
-    if (!order_id) {
-
-        return res.status(400).json({
-
-            success: false,
-
-            message:
-                "Order ID is required"
-
-        });
-    }
-
-
-    // ==================================================
-    // STEP 2 : CHECK ORDER
-    // ==================================================
-
-    const checkOrderSQL = `
-
-        SELECT
-            id,
-            order_status,
-            order_type,
-            shop_id,
-            customer_id
-
-        FROM orders
-
-        WHERE id = ?
-
-    `;
-
-
-    db.query(
-        checkOrderSQL,
-        [order_id],
-        (orderErr, orderResult) => {
-
-            if (orderErr) {
-
-                console.log(
-                    "❌ CHECK ORDER ERROR:",
-                    orderErr
-                );
-
-                return res.status(500).json({
-
-                    success: false,
-
-                    message:
-                        "Database Error"
-
-                });
-            }
-
-
-            // ==================================================
-            // ORDER NOT FOUND
-            // ==================================================
-
-            if (orderResult.length === 0) {
-
-                return res.status(404).json({
-
-                    success: false,
-
-                    message:
-                        "Order Not Found"
-
-                });
-            }
-
-
-            const order =
-                orderResult[0];
-
-
-            console.log(
-                "========== DELIVERY ASSIGNMENT =========="
-            );
-
-            console.log(
-                "Order ID =",
-                order.id
-            );
-
-            console.log(
-                "Order Type =",
-                order.order_type
-            );
-
-            console.log(
-                "Order Status =",
-                order.order_status
-            );
-
-            console.log(
-                "Shop ID =",
-                order.shop_id
-            );
-
-            console.log(
-                "Customer ID =",
-                order.customer_id
-            );
-
-            console.log(
-                "========================================="
-            );
-
-
-            // ==================================================
-            // STEP 3 : CHECK ORDER TYPE
-            // ==================================================
-
-            if (
-                order.order_type !==
-                "Delivery"
-            ) {
-
-                return res.status(400).json({
-
-                    success: false,
-
-                    message:
-                        "Only Delivery orders can be assigned to a Delivery Boy"
-
-                });
-            }
-
-
-            // ==================================================
-            // STEP 4 : CHECK EXISTING ASSIGNMENT
-            // ==================================================
-
-            const checkAssignmentSQL = `
-
-                SELECT
-                    id,
-                    delivery_boy_id,
-                    status
-
-                FROM delivery_assignments
-
-                WHERE order_id = ?
-
-            `;
-
-
-            db.query(
-                checkAssignmentSQL,
-                [order_id],
-                (assignmentErr, assignmentResult) => {
-
-                    if (assignmentErr) {
-
-                        console.log(
-                            "❌ CHECK ASSIGNMENT ERROR:",
-                            assignmentErr
-                        );
-
-                        return res.status(500).json({
-
-                            success: false,
-
-                            message:
-                                "Database Error"
-
-                        });
-                    }
-
-
-                    // ==================================================
-                    // ORDER ALREADY ASSIGNED
-                    // ==================================================
-
-                    if (
-                        assignmentResult.length > 0
-                    ) {
-
-                        return res.status(400).json({
-
-                            success: false,
-
-                            message:
-                                "Delivery Boy already assigned to this order",
-
-                            assignment:
-                                assignmentResult[0]
-
-                        });
-                    }
-
-
-                    // ==================================================
-                    // STEP 5 : FIND AVAILABLE DELIVERY BOY
-                    // ==================================================
-
-                    const findAvailableBoySQL = `
-
-                        SELECT
-                            s.id,
-                            s.name,
-                            s.phone,
-                            s.work_start_time,
-                            s.work_end_time
-
-                        FROM staff s
-
-                        WHERE s.role = 'DeliveryBoy'
-
-                        AND s.status = 'Active'
-
-                      AND ADDTIME(CURTIME(), '05:30:00')
-    BETWEEN s.work_start_time AND s.work_end_time
-
-                        AND NOT EXISTS (
-
-                            SELECT 1
-
-                            FROM delivery_assignments da
-
-                            WHERE da.delivery_boy_id = s.id
-
-                            AND da.status IN (
-                                'Assigned',
-                                'Accepted',
-                                'OutForDelivery'
-                            )
-
-                        )
-
-                        ORDER BY s.id ASC
-
-                        LIMIT 1
-
-                    `;
-
-
-                    db.query(
-                        findAvailableBoySQL,
-                        [],
-                        (boyErr, boyResult) => {
-
-                            if (boyErr) {
-
-                                console.log(
-                                    "❌ FIND AVAILABLE DELIVERY BOY ERROR:",
-                                    boyErr
-                                );
-
-                                return res.status(500).json({
-
-                                    success: false,
-
-                                    message:
-                                        "Failed to find available Delivery Boy",
-
-                                    error:
-                                        boyErr.sqlMessage ||
-                                        boyErr.message
-
-                                });
-                            }
-
-
-                            // ==================================================
-                            // NO DELIVERY BOY AVAILABLE
-                            // ==================================================
-
-                            if (
-                                boyResult.length === 0
-                            ) {
-
-                                console.log(
-                                    "⚠️ NO DELIVERY BOY AVAILABLE"
-                                );
-
-                                return res.status(409).json({
-
-                                    success: false,
-
-                                    message:
-                                        "No Delivery Boy is currently available"
-
-                                });
-                            }
-
-
-                            const deliveryBoy =
-                                boyResult[0];
-
-
-                            console.log(
-                                "========== AVAILABLE DELIVERY BOY =========="
-                            );
-
-                            console.log(
-                                "ID =",
-                                deliveryBoy.id
-                            );
-
-                            console.log(
-                                "Name =",
-                                deliveryBoy.name
-                            );
-
-                            console.log(
-                                "Phone =",
-                                deliveryBoy.phone
-                            );
-
-                            console.log(
-                                "============================================="
-                            );
-
-
-                            // ==================================================
-                            // STEP 6 : CREATE ASSIGNMENT
-                            // ==================================================
-
-                            const insertAssignmentSQL = `
-
-                                INSERT INTO delivery_assignments
-                                (
-                                    order_id,
-                                    delivery_boy_id,
-                                    status
-                                )
-
-                                VALUES
-                                (?, ?, 'Assigned')
-
-                            `;
-
-
-                            db.query(
-                                insertAssignmentSQL,
-                                [
-                                    order_id,
-                                    deliveryBoy.id
-                                ],
-                                (insertErr, insertResult) => {
-
-                                    if (insertErr) {
-
-                                        console.log(
-                                            "❌ CREATE ASSIGNMENT ERROR:",
-                                            insertErr
-                                        );
-
-                                        return res.status(500).json({
-
-                                            success: false,
-
-                                            message:
-                                                "Delivery Assignment Failed",
-
-                                            error:
-                                                insertErr.sqlMessage ||
-                                                insertErr.message
-
-                                        });
-                                    }
-
-
-                                    // ==================================================
-                                    // SUCCESS
-                                    // ==================================================
-
-                                    console.log(
-                                        "✅ DELIVERY BOY ASSIGNED"
-                                    );
-
-
-                                    console.log(
-                                        "Assignment ID =",
-                                        insertResult.insertId
-                                    );
-
-                                    console.log(
-                                        "Order ID =",
-                                        order_id
-                                    );
-
-                                    console.log(
-                                        "Delivery Boy ID =",
-                                        deliveryBoy.id
-                                    );
-
-
-                                    // ==================================================
-// CREATE FIRST DELIVERY ASSIGNMENT ATTEMPT
-// ==================================================
-
-createDeliveryAssignmentAttempt(
-    order_id,
-    deliveryBoy.id,
-    (attemptErr, attempt) => {
-
-        if (attemptErr) {
-
-            console.error(
-                "❌ ASSIGNMENT CREATED BUT ATTEMPT CREATION FAILED:",
-                attemptErr
-            );
-
-            return res.status(500).json({
-
-                success: false,
-
-                message:
-                    "Delivery assigned but initial attempt creation failed",
-
-                assignmentId:
-                    insertResult.insertId,
-
-                error:
-                    attemptErr.sqlMessage ||
-                    attemptErr.message
-
-            });
-        }
-
-
-        console.log(
-            "✅ ASSIGNMENT + INITIAL ATTEMPT CREATED"
-        );
-
-
-        return res.status(201).json({
-
-            success: true,
-
-            message:
-                "Delivery Boy Assigned Successfully",
-
-            assignmentId:
-                insertResult.insertId,
-
-            attemptId:
-                attempt.attemptId,
-
-            orderId:
-                order_id,
-
-            deliveryBoyId:
-                deliveryBoy.id,
-
-            deliveryBoyName:
-                deliveryBoy.name,
-
-            deliveryBoyPhone:
-                deliveryBoy.phone,
-
-            attemptNo:
-                1,
-
-            status:
-                "Assigned"
-
-        });
-
-    }
-);
-                                }
-                            );
-
-                        }
-                    );
-
-                }
-            );
-
-        }
-    );
-
+    return res.status(410).json({
+        success: false,
+        message:
+            "Manual delivery assignment is disabled. Automatic assignment is used."
+    });
 };
+
 
 const calculateDistanceKm = (
     lat1,
@@ -1218,6 +997,82 @@ exports.acceptDelivery = async (req, res) => {
                 `Cannot accept delivery. Attempt status is ${attempt.status}`
             );
         }
+
+// STEP 3.5: VALIDATE ORDER ITEMS
+
+const validation = await validateOrderItems(
+    assignment.order_id,
+    connection
+);
+
+if (!validation.valid) {
+
+    // Cancel the invalid assignment.
+    const cancelResult = await query(
+        `
+            UPDATE delivery_assignments
+            SET status = 'Cancelled'
+            WHERE id = ?
+              AND delivery_boy_id = ?
+              AND status = 'Assigned'
+        `,
+        [
+            assignmentId,
+            deliveryBoyId
+        ]
+    );
+
+    if (cancelResult.affectedRows !== 1) {
+        throw new Error(
+            "Invalid assignment could not be cancelled"
+        );
+    }
+
+    // Expire its latest assignment attempt.
+    const expireResult = await query(
+        `
+            UPDATE delivery_assignment_attempts
+            SET status = 'Expired'
+            WHERE id = ?
+              AND delivery_boy_id = ?
+              AND status IN ('Assigned', 'Reminded')
+        `,
+        [
+            attempt.id,
+            deliveryBoyId
+        ]
+    );
+
+    if (expireResult.affectedRows !== 1) {
+        throw new Error(
+            "Invalid delivery attempt could not be expired"
+        );
+    }
+
+    await new Promise((resolve, reject) => {
+        connection.commit(err => {
+            if (err) return reject(err);
+            resolve();
+        });
+    });
+
+    transactionStarted = false;
+
+    console.log(
+        "⚠️ INVALID DELIVERY CANCELLED:",
+        assignment.order_id,
+        validation.reason
+    );
+
+    return res.status(409).json({
+        success: false,
+        message:
+            "This delivery was cancelled because its order items are invalid.",
+        assignmentStatus: "Cancelled",
+        attemptStatus: "Expired",
+        reason: validation.reason
+    });
+}
 
         // STEP 4: CALCULATE DISTANCE
 
@@ -1468,7 +1323,7 @@ o.delivery_landmark,
     db.query(
         ordersSQL,
         [deliveryBoyId],
-        (orderErr, orderResult) => {
+        async (orderErr, orderResult) => {
 
             if (orderErr) {
 
@@ -1643,11 +1498,11 @@ o.delivery_landmark,
 
                                     order_type:
                                         order.order_type,
-                                   
+
 cashback_amount: Number(order.cashback_amount || 0),
 cashback_status: order.cashback_status,
 cashback_paid_by: order.cashback_paid_by,
-cashback_paid_at: order.cashback_paid_at,     
+cashback_paid_at: order.cashback_paid_at,
 
                                     payment_status:
                                         order.payment_status,
@@ -1718,22 +1573,122 @@ owner_upi_id:
                         );
 
 
-                    console.log(
-                        "✅ MY DELIVERY ORDERS RESPONSE READY"
-                    );
 
+Promise.all(
+    orders.map(async (order) => {
+        const validation = await validateOrderItems(
+            order.order_id
+        );
 
-                    return res.json({
+        if (validation.valid) {
+            return {
+                ...order,
+                items_valid: true,
+                validation_reason: null
+            };
+        }
 
-                        success: true,
+        console.warn(
+            "⚠️ INVALID ASSIGNED DELIVERY ORDER:",
+            order.order_id,
+            validation.reason
+        );
 
-                        count:
-                            orders.length,
+        if (["Assigned", "Accepted"].includes(order.delivery_status)) {
+            const cancellation = await cancelInvalidDeliveryAssignment(
+                order.assignment_id,
+                order.order_id,
+                deliveryBoyId
+            );
 
-                        orders:
-                            orders
+            if (cancellation.cancelled) {
+                console.warn(
+                    "🧹 INVALID DELIVERY ASSIGNMENT CANCELLED:",
+                    order.assignment_id,
+                    "ORDER:",
+                    order.order_id
+                );
 
-                    });
+                return null;
+            }
+if (cancellation.validationNowValid) {
+    return {
+        ...order,
+        items_valid: true,
+        validation_reason: null
+    };
+}
+            // Assignment changed concurrently. Do not hide an OutForDelivery
+            // order because the Delivery Boy may already have collected food.
+            if (
+                !cancellation.status ||
+                ["Cancelled", "Delivered"].includes(cancellation.status)
+            ) {
+                return null;
+            }
+
+            return {
+                ...order,
+                delivery_status: cancellation.status,
+                items_valid: false,
+                validation_reason: validation.reason
+            };
+        }
+
+        if (
+            ["Cancelled", "Delivered"].includes(order.delivery_status)
+        ) {
+            return null;
+        }
+
+        // OutForDelivery is deliberately retained for operational resolution.
+        // Automatically releasing the Delivery Boy here could strand food.
+        return {
+            ...order,
+            items_valid: false,
+            validation_reason: validation.reason
+        };
+    })
+).then(validatedOrders => {
+
+    const visibleOrders = validatedOrders.filter(
+        order => order !== null
+    );
+
+    const invalidVisibleCount = visibleOrders.filter(
+        order => !order.items_valid
+    ).length;
+
+    console.log(
+        "📦 DELIVERY ORDERS RETURNED:",
+        visibleOrders.length
+    );
+
+    console.log(
+        "⚠️ INVALID ORDERS REQUIRING OPERATIONAL REVIEW:",
+        invalidVisibleCount
+    );
+
+    return res.json({
+        success: true,
+        count: visibleOrders.length,
+        orders: visibleOrders
+    });
+
+}).catch(validationError => {
+
+    console.error(
+        "❌ DELIVERY ORDER VALIDATION / CANCELLATION ERROR:",
+        validationError
+    );
+
+    return res.status(500).json({
+        success: false,
+        message: "Failed to validate delivery orders"
+    });
+
+});
+
 
                 }
             );
@@ -1871,9 +1826,9 @@ exports.updateOnlineStatus = (req, res) => {
             // SAVE GPS
             // ==================================================
 
-            
 
-              
+
+
 
 
 
@@ -1889,233 +1844,234 @@ exports.updateOnlineStatus = (req, res) => {
 // 3. এরপর GPS চলবে
 // ======================================================
 
-exports.pickupDelivery = (req, res) => {
+exports.pickupDelivery = async (req, res) => {
+    console.log("📦 PICKUP DELIVERY ROUTE HIT");
 
-    console.log(
-        "📦 PICKUP DELIVERY ROUTE HIT"
-    );
-
-
-    const assignmentId =
-        req.params.assignmentId;
-
+    const assignmentId = req.params.assignmentId;
 
     if (!assignmentId) {
-
         return res.status(400).json({
-
             success: false,
-
-            message:
-                "Assignment ID is required"
-
+            message: "Assignment ID is required"
         });
     }
-
 
     const deliveryBoyId =
         req.user?.id ||
         req.user?.userId ||
         req.user?.staffId;
 
-
     if (!deliveryBoyId) {
-
         return res.status(401).json({
-
             success: false,
-
-            message:
-                "Delivery Boy ID not found in authentication token"
-
+            message: "Delivery Boy ID not found in authentication token"
         });
     }
 
+    let connection;
+    let transactionStarted = false;
 
-    const checkSQL = `
+    const query = (sql, params = []) =>
+        new Promise((resolve, reject) => {
+            connection.query(sql, params, (err, result) => {
+                if (err) return reject(err);
+                resolve(result);
+            });
+        });
 
-        SELECT
-            id,
-            order_id,
-            delivery_boy_id,
-            status
+    const rollback = () =>
+        new Promise(resolve => {
+            connection.rollback(() => resolve());
+        });
 
-        FROM delivery_assignments
+    try {
+        connection = await new Promise((resolve, reject) => {
+            db.getConnection((err, conn) => {
+                if (err) return reject(err);
+                resolve(conn);
+            });
+        });
 
-        WHERE id = ?
+        await new Promise((resolve, reject) => {
+            connection.beginTransaction(err => {
+                if (err) return reject(err);
+                resolve();
+            });
+        });
 
-        AND delivery_boy_id = ?
+        transactionStarted = true;
 
-    `;
-
-
-    db.query(
-        checkSQL,
-        [
-            assignmentId,
-            deliveryBoyId
-        ],
-        (err, result) => {
-
-            if (err) {
-
-                console.log(
-                    "❌ CHECK PICKUP ERROR:",
-                    err
-                );
-
-                return res.status(500).json({
-
-                    success: false,
-
-                    message:
-                        "Database Error",
-
-                    error:
-                        err.sqlMessage ||
-                        err.message
-
-                });
-            }
-
-
-            if (
-                result.length === 0
-            ) {
-
-                return res.status(404).json({
-
-                    success: false,
-
-                    message:
-                        "Delivery assignment not found"
-
-                });
-            }
-
-
-            const assignment =
-                result[0];
-
-
-            // ==================================================
-            // ONLY ACCEPTED CAN BE PICKED UP
-            // ==================================================
-
-            if (
-                assignment.status !==
-                "Accepted"
-            ) {
-
-                return res.status(400).json({
-
-                    success: false,
-
-                    message:
-                        `Cannot pickup delivery. Current status is ${assignment.status}`
-
-                });
-            }
-
-
-            const pickupSQL = `
-
-                UPDATE delivery_assignments
-
-                SET
-
-                    status =
-                        'OutForDelivery',
-
-                    out_for_delivery_at =
-                        NOW()
-
+        const assignmentRows = await query(
+            `
+                SELECT
+                    id,
+                    order_id,
+                    delivery_boy_id,
+                    status
+                FROM delivery_assignments
                 WHERE id = ?
+                  AND delivery_boy_id = ?
+                FOR UPDATE
+            `,
+            [assignmentId, deliveryBoyId]
+        );
 
-                AND delivery_boy_id = ?
+        if (!assignmentRows.length) {
+            await rollback();
+            transactionStarted = false;
 
-                AND status = 'Accepted'
+            return res.status(404).json({
+                success: false,
+                message: "Delivery assignment not found"
+            });
+        }
 
-            `;
+        const assignment = assignmentRows[0];
 
+        if (assignment.status !== "Accepted") {
+            await rollback();
+            transactionStarted = false;
 
-            db.query(
-                pickupSQL,
-                [
-                    assignmentId,
-                    deliveryBoyId
-                ],
-                (updateErr, updateResult) => {
+            return res.status(409).json({
+                success: false,
+                message:
+                    `Cannot pickup delivery. Current status is ${assignment.status}`
+            });
+        }
 
-                    if (updateErr) {
+        // Revalidate order items immediately before pickup.
+        const validation = await validateOrderItems(
+            assignment.order_id,
+            connection
+        );
 
-                        console.log(
-                            "❌ PICKUP DELIVERY ERROR:",
-                            updateErr
-                        );
-
-                        return res.status(500).json({
-
-                            success: false,
-
-                            message:
-                                "Failed to pickup delivery",
-
-                            error:
-                                updateErr.sqlMessage ||
-                                updateErr.message
-
-                        });
-                    }
-
-
-                    if (
-                        updateResult.affectedRows === 0
-                    ) {
-
-                        return res.status(400).json({
-
-                            success: false,
-
-                            message:
-                                "Delivery could not be picked up"
-
-                        });
-                    }
-
-
-                    console.log(
-                        "📦 ORDER PICKED UP"
-                    );
-
-
-                    return res.json({
-
-                        success: true,
-
-                        message:
-                            "Order picked up successfully",
-
-                        assignmentId:
-                            Number(assignmentId),
-
-                        orderId:
-                            assignment.order_id,
-
-                        deliveryBoyId:
-                            deliveryBoyId,
-
-                        status:
-                            "OutForDelivery"
-
-                    });
-
-                }
+        if (!validation.valid) {
+            const attemptRows = await query(
+                `
+                    SELECT id, status
+                    FROM delivery_assignment_attempts
+                    WHERE order_id = ?
+                      AND delivery_boy_id = ?
+                    ORDER BY attempt_no DESC, id DESC
+                    LIMIT 1
+                    FOR UPDATE
+                `,
+                [assignment.order_id, deliveryBoyId]
             );
 
-        }
-    );
+            await query(
+                `
+                    UPDATE delivery_assignments
+                    SET status = 'Cancelled'
+                    WHERE id = ?
+                      AND delivery_boy_id = ?
+                      AND status = 'Accepted'
+                `,
+                [assignmentId, deliveryBoyId]
+            );
 
+            if (
+                attemptRows.length &&
+                ["Assigned", "Reminded", "Accepted"].includes(
+                    attemptRows[0].status
+                )
+            ) {
+                await query(
+                    `
+                        UPDATE delivery_assignment_attempts
+                        SET status = 'Expired'
+                        WHERE id = ?
+                          AND order_id = ?
+                          AND delivery_boy_id = ?
+                          AND status IN ('Assigned', 'Reminded', 'Accepted')
+                    `,
+                    [
+                        attemptRows[0].id,
+                        assignment.order_id,
+                        deliveryBoyId
+                    ]
+                );
+            }
+
+            await new Promise((resolve, reject) => {
+                connection.commit(err => {
+                    if (err) return reject(err);
+                    resolve();
+                });
+            });
+
+            transactionStarted = false;
+
+            return res.status(409).json({
+                success: false,
+                message: "Pickup blocked. Order items are invalid.",
+                reason: validation.reason,
+                status: "Cancelled"
+            });
+        }
+
+        const updateResult = await query(
+            `
+                UPDATE delivery_assignments
+                SET
+                    status = 'OutForDelivery',
+                    out_for_delivery_at = NOW()
+                WHERE id = ?
+                  AND delivery_boy_id = ?
+                  AND status = 'Accepted'
+            `,
+            [assignmentId, deliveryBoyId]
+        );
+
+        if (updateResult.affectedRows !== 1) {
+            await rollback();
+            transactionStarted = false;
+
+            return res.status(409).json({
+                success: false,
+                message: "Delivery could not be picked up"
+            });
+        }
+
+        await new Promise((resolve, reject) => {
+            connection.commit(err => {
+                if (err) return reject(err);
+                resolve();
+            });
+        });
+
+        transactionStarted = false;
+
+        console.log("📦 ORDER PICKED UP:", assignment.order_id);
+
+        return res.json({
+            success: true,
+            message: "Order picked up successfully",
+            assignmentId: Number(assignmentId),
+            orderId: assignment.order_id,
+            deliveryBoyId,
+            status: "OutForDelivery"
+        });
+
+    } catch (error) {
+        if (connection && transactionStarted) {
+            await rollback();
+            transactionStarted = false;
+        }
+
+        console.error("❌ PICKUP DELIVERY ERROR:", error);
+
+        return res.status(500).json({
+            success: false,
+            message: "Failed to pickup delivery",
+            error: error.sqlMessage || error.message
+        });
+
+    } finally {
+        if (connection) {
+            connection.release();
+        }
+    }
 };
 
 
@@ -2131,28 +2087,17 @@ exports.pickupDelivery = (req, res) => {
 // DELIVER DELIVERY
 // ======================================================
 
-exports.deliverDelivery = (req, res) => {
-
+exports.deliverDelivery = async (req, res) => {
     console.log("✅ DELIVER DELIVERY ROUTE HIT");
-
-    // ==================================================
-    // STEP 1 : GET ASSIGNMENT ID
-    // ==================================================
 
     const assignmentId = req.params.assignmentId;
 
     if (!assignmentId) {
-
         return res.status(400).json({
             success: false,
             message: "Assignment ID is required"
         });
-
     }
-
-    // ==================================================
-    // STEP 2 : GET DELIVERY BOY ID FROM JWT
-    // ==================================================
 
     const deliveryBoyId =
         req.user?.id ||
@@ -2160,407 +2105,186 @@ exports.deliverDelivery = (req, res) => {
         req.user?.staffId;
 
     if (!deliveryBoyId) {
-
         return res.status(401).json({
             success: false,
-            message:
-                "Delivery Boy ID not found in authentication token"
+            message: "Delivery Boy ID not found in authentication token"
         });
-
     }
 
-    console.log(
-        "🚚 DELIVERY BOY ID =",
-        deliveryBoyId
-    );
+    let connection;
+    let transactionStarted = false;
+    let assignment;
 
-    console.log(
-        "📦 ASSIGNMENT ID =",
-        assignmentId
-    );
+    const query = (sql, params = []) =>
+        new Promise((resolve, reject) => {
+            connection.query(sql, params, (err, result) => {
+                if (err) return reject(err);
+                resolve(result);
+            });
+        });
 
-    // ==================================================
-    // STEP 3 : CHECK ASSIGNMENT
-    // ==================================================
+    const rollback = () =>
+        new Promise(resolve => {
+            connection.rollback(() => resolve());
+        });
 
-    const checkSQL = `
+    try {
+        connection = await new Promise((resolve, reject) => {
+            db.getConnection((err, conn) => {
+                if (err) return reject(err);
+                resolve(conn);
+            });
+        });
 
-        SELECT
-            id,
-            order_id,
-            delivery_boy_id,
-            status
+        await new Promise((resolve, reject) => {
+            connection.beginTransaction(err => {
+                if (err) return reject(err);
+                resolve();
+            });
+        });
 
-        FROM delivery_assignments
+        transactionStarted = true;
 
-        WHERE id = ?
+        const assignmentRows = await query(
+            `
+                SELECT
+                    id,
+                    order_id,
+                    delivery_boy_id,
+                    status
+                FROM delivery_assignments
+                WHERE id = ?
+                  AND delivery_boy_id = ?
+                FOR UPDATE
+            `,
+            [assignmentId, deliveryBoyId]
+        );
 
-        AND delivery_boy_id = ?
+        if (!assignmentRows.length) {
+            await rollback();
+            transactionStarted = false;
 
-    `;
+            return res.status(404).json({
+                success: false,
+                message: "Delivery assignment not found"
+            });
+        }
 
-    db.query(
-        checkSQL,
-        [
-            assignmentId,
-            deliveryBoyId
-        ],
-        (checkErr, checkResult) => {
+        assignment = assignmentRows[0];
 
-            if (checkErr) {
+        if (assignment.status !== "OutForDelivery") {
+            await rollback();
+            transactionStarted = false;
 
-                console.log(
-                    "❌ CHECK DELIVER DELIVERY ERROR:",
-                    checkErr
-                );
+            return res.status(409).json({
+                success: false,
+                message:
+                    `Cannot mark as delivered. Current status is ${assignment.status}`
+            });
+        }
 
-                return res.status(500).json({
-
-                    success: false,
-
-                    message:
-                        "Database Error",
-
-                    error:
-                        checkErr.sqlMessage ||
-                        checkErr.message
-
-                });
-
-            }
-
-            // ==================================================
-            // ASSIGNMENT NOT FOUND
-            // ==================================================
-
-            if (checkResult.length === 0) {
-
-                return res.status(404).json({
-
-                    success: false,
-
-                    message:
-                        "Delivery assignment not found"
-
-                });
-
-            }
-
-            const assignment =
-                checkResult[0];
-
-            console.log(
-                "📦 ASSIGNMENT FOUND =",
-                assignment
-            );
-
-            // ==================================================
-            // ONLY OUT FOR DELIVERY CAN BE DELIVERED
-            // ==================================================
-
-            if (
-                assignment.status !==
-                "OutForDelivery"
-            ) {
-
-                return res.status(400).json({
-
-                    success: false,
-
-                    message:
-                        `Cannot mark as delivered. Current status is ${assignment.status}`
-
-                });
-
-            }
-
-            // ==================================================
-            // STEP 4 :
-            // UPDATE DELIVERY ASSIGNMENT
-            // ==================================================
-
-            const deliverSQL = `
-
+        const deliverResult = await query(
+            `
                 UPDATE delivery_assignments
-
                 SET
                     status = 'Delivered',
                     delivered_at = NOW()
-
                 WHERE id = ?
-
-                AND delivery_boy_id = ?
-
-                AND status = 'OutForDelivery'
-
-            `;
-
-            db.query(
-                deliverSQL,
-                [
-                    assignmentId,
-                    deliveryBoyId
-                ],
-                (deliverErr, deliverResult) => {
-
-                    if (deliverErr) {
-
-                        console.log(
-                            "❌ DELIVER DELIVERY ERROR:",
-                            deliverErr
-                        );
-
-                        return res.status(500).json({
-
-                            success: false,
-
-                            message:
-                                "Failed to mark delivery as completed",
-
-                            error:
-                                deliverErr.sqlMessage ||
-                                deliverErr.message
-
-                        });
-
-                    }
-
-                    // ==================================================
-                    // CHECK ASSIGNMENT UPDATE
-                    // ==================================================
-
-                    if (
-                        deliverResult.affectedRows === 0
-                    ) {
-
-                        return res.status(400).json({
-
-                            success: false,
-
-                            message:
-                                "Delivery status was not updated"
-
-                        });
-
-                    }
-
-                    console.log(
-                        "✅ ASSIGNMENT STATUS UPDATED"
-                    );
-
-                    console.log(
-                        "Assignment ID =",
-                        assignmentId
-                    );
-
-                    console.log(
-                        "Status = Delivered"
-                    );
-
-                    // ==================================================
-                    // STEP 5 :
-                    // UPDATE ORDER STATUS
-                    // ==================================================
-
-                    const updateOrderSQL = `
-
-                        UPDATE orders
-
-                        SET
-                            order_status = 'Completed'
-
-                        WHERE id = ?
-
-                    `;
-
-                    db.query(
-                        updateOrderSQL,
-                        [
-                            assignment.order_id
-                        ],
-                        (orderErr, orderResult) => {
-
-                            if (orderErr) {
-
-                                console.log(
-                                    "❌ UPDATE ORDER STATUS ERROR:",
-                                    orderErr
-                                );
-
-                                return res.status(500).json({
-
-                                    success: false,
-
-                                    message:
-                                        "Delivery completed but order status update failed",
-
-                                    error:
-                                        orderErr.sqlMessage ||
-                                        orderErr.message
-
-                                });
-
-                            }
-
-                            // ==================================================
-                            // CHECK ORDER UPDATE
-                            // ==================================================
-
-                            if (
-                                orderResult.affectedRows === 0
-                            ) {
-
-                                return res.status(400).json({
-
-                                    success: false,
-
-                                    message:
-                                        "Delivery marked as delivered but order status was not updated"
-
-                                });
-
-                            }
-
-                            console.log(
-                                "🎉 DELIVERY COMPLETED"
-                            );
-
-                            console.log(
-                                "Assignment ID =",
-                                assignmentId
-                            );
-
-                            console.log(
-                                "Order ID =",
-                                assignment.order_id
-                            );
-
-                            console.log(
-                                "Delivery Boy ID =",
-                                deliveryBoyId
-                            );
-
-                            console.log(
-                                "Assignment Status = Delivered"
-                            );
-
-                            console.log(
-                                "Order Status = Completed"
-                            );
-
-                            // ==================================================
-                            // STEP 6 :
-                            // AUTO ASSIGN NEXT WAITING DELIVERY
-                            // ==================================================
-
-                            console.log(
-                                "🔄 DELIVERY COMPLETED → CHECKING WAITING ORDERS"
-                            );
-
-                            exports.autoAssignWaitingDelivery(
-                                (waitingErr, waitingAssignment) => {
-
-                                    // ==================================================
-                                    // AUTO ASSIGN ERROR
-                                    // ==================================================
-
-                                    if (waitingErr) {
-
-                                        console.log(
-                                            "⚠️ WAITING ORDER AUTO ASSIGN FAILED:",
-                                            waitingErr
-                                        );
-
-                                    }
-
-                                    // ==================================================
-                                    // NO WAITING ORDER / NO AVAILABLE BOY
-                                    // ==================================================
-
-                                    else if (
-                                        !waitingAssignment
-                                    ) {
-
-                                        console.log(
-                                            "ℹ️ NO WAITING ORDER OR NO DELIVERY BOY AVAILABLE"
-                                        );
-
-                                    }
-
-                                    // ==================================================
-                                    // WAITING ORDER ASSIGNED
-                                    // ==================================================
-
-                                    else {
-
-                                        console.log(
-                                            "✅ NEXT WAITING ORDER AUTOMATICALLY ASSIGNED"
-                                        );
-
-                                        console.log(
-                                            "📦 Waiting Order ID =",
-                                            waitingAssignment.orderId
-                                        );
-
-                                        console.log(
-                                            "🚚 Delivery Boy ID =",
-                                            waitingAssignment.deliveryBoyId
-                                        );
-
-                                        console.log(
-                                            "👤 Delivery Boy Name =",
-                                            waitingAssignment.deliveryBoyName
-                                        );
-
-                                    }
-
-                                    // ==================================================
-                                    // FINAL RESPONSE
-                                    // ==================================================
-
-                                    return res.json({
-
-                                        success: true,
-
-                                        message:
-                                            "Order delivered successfully",
-
-                                        assignmentId:
-                                            Number(assignmentId),
-
-                                        orderId:
-                                            assignment.order_id,
-
-                                        deliveryBoyId:
-                                            deliveryBoyId,
-
-                                        assignmentStatus:
-                                            "Delivered",
-
-                                        orderStatus:
-                                            "Completed",
-
-                                        waitingOrderAssigned:
-                                            !!waitingAssignment,
-
-                                        waitingAssignment:
-                                            waitingAssignment || null
-
-                                    });
-
-                                }
-                            );
-
-                        }
-                    );
-
-                }
+                  AND delivery_boy_id = ?
+                  AND status = 'OutForDelivery'
+            `,
+            [assignmentId, deliveryBoyId]
+        );
+
+        if (deliverResult.affectedRows !== 1) {
+            await rollback();
+            transactionStarted = false;
+
+            return res.status(409).json({
+                success: false,
+                message: "Delivery status was not updated"
+            });
+        }
+
+        const orderResult = await query(
+            `
+                UPDATE orders
+                SET order_status = 'Completed'
+                WHERE id = ?
+            `,
+            [assignment.order_id]
+        );
+
+        if (orderResult.affectedRows !== 1) {
+            throw new Error(
+                "Order status update failed. Transaction rolled back."
             );
+        }
 
+        await new Promise((resolve, reject) => {
+            connection.commit(err => {
+                if (err) return reject(err);
+                resolve();
+            });
+        });
+
+        transactionStarted = false;
+
+        console.log("🎉 DELIVERY COMPLETED");
+        console.log("Assignment ID =", assignmentId);
+        console.log("Order ID =", assignment.order_id);
+        console.log("Delivery Boy ID =", deliveryBoyId);
+
+    } catch (error) {
+        if (connection && transactionStarted) {
+            await rollback();
+            transactionStarted = false;
+        }
+
+        console.error("❌ DELIVER DELIVERY ERROR:", error);
+
+        return res.status(500).json({
+            success: false,
+            message: "Failed to complete delivery",
+            error: error.sqlMessage || error.message
+        });
+
+    } finally {
+        if (connection) {
+            connection.release();
+        }
+    }
+
+    // Run the next automatic assignment only after successful commit.
+    console.log("🔄 CHECKING NEXT WAITING DELIVERY");
+
+    exports.autoAssignWaitingDelivery(
+        (waitingErr, waitingAssignment) => {
+
+            if (waitingErr) {
+                console.error(
+                    "⚠️ NEXT DELIVERY AUTO ASSIGN FAILED:",
+                    waitingErr
+                );
+            }
+
+            return res.json({
+                success: true,
+                message: "Order delivered successfully",
+                assignmentId: Number(assignmentId),
+                orderId: assignment.order_id,
+                deliveryBoyId,
+                assignmentStatus: "Delivered",
+                orderStatus: "Completed",
+                waitingOrderAssigned:
+                    !waitingErr && !!waitingAssignment,
+                waitingAssignment:
+                    !waitingErr ? waitingAssignment || null : null
+            });
         }
     );
-
 };
+
 
 
 // ======================================================
@@ -2573,262 +2297,232 @@ exports.deliverDelivery = (req, res) => {
 // → Cancelled
 // ======================================================
 
-exports.cancelDelivery = (req, res) => {
+exports.cancelDelivery = async (req, res) => {
+    console.log("🔥 CANCEL DELIVERY ROUTE HIT");
 
-    console.log(
-        "🔥 CANCEL DELIVERY ROUTE HIT"
-    );
-
-
-    const assignmentId =
-        req.params.assignmentId;
-
+    const assignmentId = req.params.assignmentId;
 
     if (!assignmentId) {
-
         return res.status(400).json({
-
             success: false,
-
-            message:
-                "Assignment ID is required"
-
+            message: "Assignment ID is required"
         });
     }
-
 
     const deliveryBoyId =
         req.user?.id ||
         req.user?.userId ||
         req.user?.staffId;
 
-
     if (!deliveryBoyId) {
-
         return res.status(401).json({
-
             success: false,
-
-            message:
-                "Delivery Boy ID not found in authentication token"
-
+            message: "Delivery Boy ID not found in authentication token"
         });
     }
 
+    let connection;
+    let transactionStarted = false;
 
-    // ==================================================
-    // CHECK ASSIGNMENT
-    // ==================================================
+    const query = (sql, params = []) =>
+        new Promise((resolve, reject) => {
+            connection.query(sql, params, (err, result) => {
+                if (err) return reject(err);
+                resolve(result);
+            });
+        });
 
-    const checkSQL = `
+    const rollback = () =>
+        new Promise(resolve => {
+            connection.rollback(() => resolve());
+        });
 
-        SELECT
-            id,
-            order_id,
-            delivery_boy_id,
-            status
+    try {
+        connection = await new Promise((resolve, reject) => {
+            db.getConnection((err, conn) => {
+                if (err) return reject(err);
+                resolve(conn);
+            });
+        });
 
-        FROM delivery_assignments
+        await new Promise((resolve, reject) => {
+            connection.beginTransaction(err => {
+                if (err) return reject(err);
+                resolve();
+            });
+        });
 
-        WHERE id = ?
+        transactionStarted = true;
 
-        AND delivery_boy_id = ?
-
-    `;
-
-
-    db.query(
-        checkSQL,
-        [
-            assignmentId,
-            deliveryBoyId
-        ],
-        (checkErr, checkResult) => {
-
-            if (checkErr) {
-
-                console.log(
-                    "❌ CHECK CANCEL DELIVERY ERROR:",
-                    checkErr
-                );
-
-                return res.status(500).json({
-
-                    success: false,
-
-                    message:
-                        "Database Error",
-
-                    error:
-                        checkErr.sqlMessage ||
-                        checkErr.message
-
-                });
-            }
-
-
-            if (
-                checkResult.length === 0
-            ) {
-
-                return res.status(404).json({
-
-                    success: false,
-
-                    message:
-                        "Delivery assignment not found"
-
-                });
-            }
-
-
-            const assignment =
-                checkResult[0];
-
-
-            // ==================================================
-            // PREVENT CANCELLING DELIVERED ORDER
-            // ==================================================
-
-            if (
-                assignment.status ===
-                "Delivered"
-            ) {
-
-                return res.status(400).json({
-
-                    success: false,
-
-                    message:
-                        "Delivered order cannot be cancelled"
-
-                });
-            }
-
-
-            // ==================================================
-            // PREVENT CANCELLING ALREADY CANCELLED
-            // ==================================================
-
-            if (
-                assignment.status ===
-                "Cancelled"
-            ) {
-
-                return res.status(400).json({
-
-                    success: false,
-
-                    message:
-                        "Delivery is already cancelled"
-
-                });
-            }
-
-
-            // ==================================================
-            // CANCEL ASSIGNMENT
-            // ==================================================
-
-            const cancelSQL = `
-
-                UPDATE delivery_assignments
-
-                SET
-                    status =
-                        'Cancelled'
-
+        const assignmentRows = await query(
+            `
+                SELECT
+                    id,
+                    order_id,
+                    delivery_boy_id,
+                    status
+                FROM delivery_assignments
                 WHERE id = ?
+                  AND delivery_boy_id = ?
+                FOR UPDATE
+            `,
+            [assignmentId, deliveryBoyId]
+        );
 
-                AND delivery_boy_id = ?
+        if (!assignmentRows.length) {
+            await rollback();
+            transactionStarted = false;
 
-                AND status IN (
-                    'Assigned',
-                    'Accepted',
-                    'OutForDelivery'
-                )
-
-            `;
-
-
-            db.query(
-                cancelSQL,
-                [
-                    assignmentId,
-                    deliveryBoyId
-                ],
-                (cancelErr, cancelResult) => {
-
-                    if (cancelErr) {
-
-                        console.log(
-                            "❌ CANCEL DELIVERY ERROR:",
-                            cancelErr
-                        );
-
-                        return res.status(500).json({
-
-                            success: false,
-
-                            message:
-                                "Failed to cancel delivery",
-
-                            error:
-                                cancelErr.sqlMessage ||
-                                cancelErr.message
-
-                        });
-                    }
-
-
-                    if (
-                        cancelResult.affectedRows === 0
-                    ) {
-
-                        return res.status(400).json({
-
-                            success: false,
-
-                            message:
-                                "Delivery could not be cancelled"
-
-                        });
-                    }
-
-
-                    console.log(
-                        "❌ DELIVERY CANCELLED"
-                    );
-
-
-                    return res.json({
-
-                        success: true,
-
-                        message:
-                            "Delivery cancelled successfully",
-
-                        assignmentId:
-                            Number(assignmentId),
-
-                        orderId:
-                            assignment.order_id,
-
-                        status:
-                            "Cancelled"
-
-                    });
-
-                }
-            );
-
+            return res.status(404).json({
+                success: false,
+                message: "Delivery assignment not found"
+            });
         }
-    );
 
+        const assignment = assignmentRows[0];
+
+        if (assignment.status === "OutForDelivery") {
+            await rollback();
+            transactionStarted = false;
+
+            return res.status(409).json({
+                success: false,
+                message:
+                    "Delivery cannot be cancelled after pickup. Contact Manager or Owner for operational resolution."
+            });
+        }
+
+        if (assignment.status === "Delivered") {
+            await rollback();
+            transactionStarted = false;
+
+            return res.status(400).json({
+                success: false,
+                message: "Delivered order cannot be cancelled"
+            });
+        }
+
+        if (assignment.status === "Cancelled") {
+            await rollback();
+            transactionStarted = false;
+
+            return res.status(400).json({
+                success: false,
+                message: "Delivery is already cancelled"
+            });
+        }
+
+        if (!["Assigned", "Accepted"].includes(assignment.status)) {
+            await rollback();
+            transactionStarted = false;
+
+            return res.status(409).json({
+                success: false,
+                message: "This delivery status cannot be cancelled"
+            });
+        }
+
+        const attemptRows = await query(
+            `
+                SELECT id, status
+                FROM delivery_assignment_attempts
+                WHERE order_id = ?
+                  AND delivery_boy_id = ?
+                ORDER BY attempt_no DESC, id DESC
+                LIMIT 1
+                FOR UPDATE
+            `,
+            [assignment.order_id, deliveryBoyId]
+        );
+
+        const cancelResult = await query(
+            `
+                UPDATE delivery_assignments
+                SET status = 'Cancelled'
+                WHERE id = ?
+                  AND delivery_boy_id = ?
+                  AND status IN ('Assigned', 'Accepted')
+            `,
+            [assignmentId, deliveryBoyId]
+        );
+
+        if (cancelResult.affectedRows !== 1) {
+            await rollback();
+            transactionStarted = false;
+
+            return res.status(409).json({
+                success: false,
+                message: "Delivery could not be cancelled"
+            });
+        }
+
+        if (
+            attemptRows.length &&
+            ["Assigned", "Reminded", "Accepted"].includes(
+                attemptRows[0].status
+            )
+        ) {
+            await query(
+                `
+                    UPDATE delivery_assignment_attempts
+                    SET status = 'Expired'
+                    WHERE id = ?
+                      AND order_id = ?
+                      AND delivery_boy_id = ?
+                      AND status IN ('Assigned', 'Reminded', 'Accepted')
+                `,
+                [
+                    attemptRows[0].id,
+                    assignment.order_id,
+                    deliveryBoyId
+                ]
+            );
+        }
+
+        await new Promise((resolve, reject) => {
+            connection.commit(err => {
+                if (err) return reject(err);
+                resolve();
+            });
+        });
+
+        transactionStarted = false;
+
+        console.log("❌ DELIVERY CANCELLED:", assignmentId);
+
+        return res.json({
+            success: true,
+            message: "Delivery cancelled successfully",
+            assignmentId: Number(assignmentId),
+            orderId: assignment.order_id,
+            status: "Cancelled"
+        });
+
+    } catch (error) {
+        if (connection && transactionStarted) {
+            await rollback();
+            transactionStarted = false;
+        }
+
+        console.error("❌ CANCEL DELIVERY ERROR:", error);
+
+        return res.status(500).json({
+            success: false,
+            message: "Failed to cancel delivery",
+            error: error.sqlMessage || error.message
+        });
+
+    } finally {
+        if (connection) {
+            connection.release();
+        }
+    }
 };
+
 // ==================================================
 // STAFF / MANAGER AUTO ASSIGN WAITING DELIVERY
 // ==================================================
+
 
 exports.staffAutoAssignWaitingDelivery = (req, res) => {
 
@@ -2836,65 +2530,100 @@ exports.staffAutoAssignWaitingDelivery = (req, res) => {
         "🖥️ STAFF DASHBOARD → AUTO ASSIGN CHECK STARTED"
     );
 
-    exports.autoAssignWaitingDelivery(
-        (assignErr, assignment) => {
+    // Prevent duplicate response handling.
+    let responseSent = false;
 
-            if (assignErr) {
+    const sendResponse = (status, payload) => {
+        if (responseSent || res.headersSent) {
+            return;
+        }
 
-                console.error(
-                    "❌ STAFF AUTO ASSIGN ERROR:",
-                    assignErr
-                );
+        responseSent = true;
+        return res.status(status).json(payload);
+    };
 
-                return res.status(500).json({
-                    success: false,
-                    message: "Auto assignment failed"
-                });
+    try {
 
-            }
+        exports.autoAssignWaitingDelivery(
+            (assignErr, assignment) => {
 
-            if (assignment) {
+                if (assignErr) {
+
+                    console.error(
+                        "❌ STAFF AUTO ASSIGN ERROR:",
+                        assignErr
+                    );
+
+                    return sendResponse(500, {
+                        success: false,
+                        message: "Auto assignment failed"
+                    });
+                }
+
+                if (assignment) {
+
+                    console.log(
+                        "✅ STAFF DASHBOARD AUTO ASSIGNED DELIVERY:",
+                        assignment
+                    );
+
+                    return sendResponse(200, {
+                        success: true,
+                        waitingOrderAssigned: true,
+                        assignment
+                    });
+                }
 
                 console.log(
-                    "✅ STAFF DASHBOARD AUTO ASSIGNED DELIVERY:",
-                    assignment
+                    "ℹ️ STAFF AUTO ASSIGN: NO WAITING ORDER / NO AVAILABLE DELIVERY BOY"
                 );
 
-                return res.json({
+                return sendResponse(200, {
                     success: true,
-                    waitingOrderAssigned: true,
-                    assignment: assignment
+                    waitingOrderAssigned: false,
+                    assignment: null
                 });
 
             }
+        );
 
-            console.log(
-                "ℹ️ STAFF AUTO ASSIGN: NO WAITING ORDER / NO AVAILABLE DELIVERY BOY"
-            );
+    } catch (error) {
 
-            return res.json({
-                success: true,
-                waitingOrderAssigned: false,
-                assignment: null
-            });
+        console.error(
+            "❌ STAFF AUTO ASSIGN UNEXPECTED ERROR:",
+            error
+        );
 
-        }
-    );
-
+        return sendResponse(500, {
+            success: false,
+            message: "Unexpected auto assignment error"
+        });
+    }
 };
+
 // ==========================================
 // DELIVERY BOY HEARTBEAT
 // ==========================================
 // ==========================================
 // DELIVERY BOY HEARTBEAT
 // ==========================================
+
 exports.deliveryBoyHeartbeat = (req, res) => {
 
-    const deliveryBoyId = req.user.id;
+    const deliveryBoyId =
+        req.user?.id ||
+        req.user?.userId ||
+        req.user?.staffId;
 
-    console.log("🔥 HEARTBEAT CODE VERSION 4");
+    if (!deliveryBoyId) {
+        return res.status(401).json({
+            success: false,
+            message: "Delivery Boy ID not found"
+        });
+    }
+
+    console.log("💚 DELIVERY BOY HEARTBEAT");
     console.log("👤 ID =", deliveryBoyId);
-    console.log("🖥️ LEAVE CHECK ENABLED");
 
     const sql = `
         UPDATE staff
@@ -2902,9 +2631,9 @@ exports.deliveryBoyHeartbeat = (req, res) => {
             online_status = 'Online',
             last_seen = NOW()
         WHERE id = ?
-        AND role = 'DeliveryBoy'
-        AND status = 'Active'
-        AND on_leave = 0
+          AND role = 'DeliveryBoy'
+          AND status = 'Active'
+          AND on_leave = 0
     `;
 
     db.query(sql, [deliveryBoyId], (err, result) => {
@@ -2921,13 +2650,12 @@ exports.deliveryBoyHeartbeat = (req, res) => {
             });
         }
 
-        // Delivery Boy is on leave / unavailable
         if (result.affectedRows === 0) {
 
             return res.status(200).json({
                 success: false,
                 message:
-                    "Heartbeat blocked because Delivery Boy is on leave",
+                    "Heartbeat blocked because Delivery Boy is unavailable or on leave",
                 deliveryBoyId
             });
         }
@@ -2937,72 +2665,31 @@ exports.deliveryBoyHeartbeat = (req, res) => {
             deliveryBoyId
         );
 
-        // ==========================================
-        // 🔄 CHECK WAITING DELIVERY AFTER HEARTBEAT
-        // ==========================================
-
-        exports.autoAssignWaitingDelivery(
-            (assignErr, assignment) => {
-
-                if (assignErr) {
-
-                    console.error(
-                        "❌ AUTO ASSIGN AFTER HEARTBEAT ERROR:",
-                        assignErr
-                    );
-
-                    return res.json({
-                        success: true,
-                        message: "Heartbeat received",
-                        deliveryBoyId,
-                        waitingOrderAssigned: false,
-                        autoAssignError: true
-                    });
-                }
-
-                // Waiting order successfully assigned
-                if (assignment) {
-
-                    console.log(
-                        "🚚 WAITING ORDER AUTO ASSIGNED AFTER HEARTBEAT:",
-                        assignment
-                    );
-
-                    return res.json({
-                        success: true,
-                        message: "Heartbeat received",
-                        deliveryBoyId,
-                        waitingOrderAssigned: true,
-                        assignment
-                    });
-                }
-
-                // No waiting order available
-                console.log(
-                    "ℹ️ NO WAITING DELIVERY TO ASSIGN"
-                );
-
-                return res.json({
-                    success: true,
-                    message: "Heartbeat received",
-                    deliveryBoyId,
-                    waitingOrderAssigned: false,
-                    assignment: null
-                });
-            }
-        );
+        return res.json({
+            success: true,
+            message: "Heartbeat received",
+            deliveryBoyId
+        });
     });
 };
+
 // ===============================
 // DELIVERY BOY LEAVE
 // ===============================
 
-exports.setDeliveryBoyLeave = (req, res) => {
 
-    const deliveryBoyId = req.user.id;
+exports.setDeliveryBoyLeave = async (req, res) => {
+
+    const deliveryBoyId = req.user?.id;
     const { on_leave } = req.body;
 
-    // Validate
+    if (!deliveryBoyId) {
+        return res.status(401).json({
+            success: false,
+            message: "Delivery Boy ID not found"
+        });
+    }
+
     if (on_leave !== 0 && on_leave !== 1) {
         return res.status(400).json({
             success: false,
@@ -3010,86 +2697,194 @@ exports.setDeliveryBoyLeave = (req, res) => {
         });
     }
 
-    // ==========================================
-    // LEAVE = 1  → Offline
-    // RETURN = 0 → Online
-    // ==========================================
+    let connection;
+    let transactionStarted = false;
 
-    const sql = `
-        UPDATE staff
-        SET
-            on_leave = ?,
-            online_status = ?
-        WHERE id = ?
-        AND role = 'DeliveryBoy'
-        AND status = 'Active'
-    `;
-const onlineStatus =
-    on_leave === 1 ? "Offline" : "Online";
+    const query = (sql, params = []) =>
+        new Promise((resolve, reject) => {
+            connection.query(sql, params, (err, result) => {
+                if (err) return reject(err);
+                resolve(result);
+            });
+        });
 
-    db.query(
-        sql,
-        [on_leave, onlineStatus, deliveryBoyId],
-        (err, result) => {
+    const rollback = () =>
+        new Promise(resolve => {
+            connection.rollback(() => resolve());
+        });
 
-            if (err) {
-                console.error(
-                    "❌ LEAVE UPDATE ERROR:",
-                    err
-                );
+    try {
 
-                return res.status(500).json({
-                    success: false,
-                    message: "Leave update failed"
-                });
-            }
+        connection = await new Promise((resolve, reject) => {
+            db.getConnection((err, conn) => {
+                if (err) return reject(err);
+                resolve(conn);
+            });
+        });
 
-            if (result.affectedRows === 0) {
-                return res.status(404).json({
-                    success: false,
-                    message: "Delivery Boy not found"
-                });
-            }
+        await new Promise((resolve, reject) => {
+            connection.beginTransaction(err => {
+                if (err) return reject(err);
+                resolve();
+            });
+        });
 
-            console.log(
-                "🏖️ DELIVERY BOY LEAVE UPDATED:",
-                deliveryBoyId,
-                "on_leave =",
-                on_leave,
-                "online_status =",
-                onlineStatus
-            );
+        transactionStarted = true;
 
-            // ==========================================
-            // 🔄 RETURN TO WORK
-            // CHECK WAITING DELIVERY
-            // ==========================================
+        // Lock and verify the Delivery Boy.
+        const staffRows = await query(
+            `
+                SELECT id
+                FROM staff
+                WHERE id = ?
+                  AND role = 'DeliveryBoy'
+                  AND status = 'Active'
+                FOR UPDATE
+            `,
+            [deliveryBoyId]
+        );
 
-           if (on_leave === 0) {
-    return exports.autoAssignWaitingDelivery((assignErr, assignmentData) => {
-        if (assignErr) {
-            console.error("AUTO ASSIGN AFTER LEAVE RETURN ERROR:", assignErr);
+        if (!staffRows.length) {
+            await rollback();
+            transactionStarted = false;
 
-            return res.status(500).json({
+            return res.status(404).json({
                 success: false,
-                message: "Leave removed, but auto-assignment failed",
+                message: "Delivery Boy not found"
             });
         }
 
-        return res.json({
-            success: true,
-            message: "Leave removed successfully",
-            assignment: assignmentData || null,
-        });
-    });
-}
+        // Do not allow leave while an active delivery exists.
+        if (on_leave === 1) {
 
-        return res.json({
-            success: true,
-            message: "Leave applied successfully",
+            const activeAssignments = await query(
+                `
+                    SELECT id, order_id, status
+                    FROM delivery_assignments
+                    WHERE delivery_boy_id = ?
+                      AND status IN (
+                          'Assigned',
+                          'Accepted',
+                          'PickedUp',
+                          'OutForDelivery'
+                      )
+                    LIMIT 1
+                    FOR UPDATE
+                `,
+                [deliveryBoyId]
+            );
+
+            if (activeAssignments.length) {
+
+                const active = activeAssignments[0];
+
+                await rollback();
+                transactionStarted = false;
+
+                return res.status(409).json({
+                    success: false,
+                    message:
+                        "You cannot take leave while an active delivery is assigned to you.",
+                    activeAssignment: {
+                        assignmentId: active.id,
+                        orderId: active.order_id,
+                        status: active.status
+                    }
+                });
+            }
+        }
+
+        const onlineStatus =
+            on_leave === 1 ? "Offline" : "Online";
+
+        await query(
+            `
+                UPDATE staff
+                SET
+                    on_leave = ?,
+                    online_status = ?
+                WHERE id = ?
+                  AND role = 'DeliveryBoy'
+                  AND status = 'Active'
+            `,
+            [on_leave, onlineStatus, deliveryBoyId]
+        );
+
+        await new Promise((resolve, reject) => {
+            connection.commit(err => {
+                if (err) return reject(err);
+                resolve();
+            });
         });
+
+        transactionStarted = false;
+
+        console.log(
+            "🏖️ DELIVERY BOY LEAVE UPDATED:",
+            deliveryBoyId,
+            "on_leave =",
+            on_leave,
+            "online_status =",
+            onlineStatus
+        );
+
+    } catch (error) {
+
+        if (connection && transactionStarted) {
+            await rollback();
+            transactionStarted = false;
+        }
+
+        console.error("❌ LEAVE UPDATE ERROR:", error);
+
+        return res.status(500).json({
+            success: false,
+            message: "Leave update failed",
+            error: error.sqlMessage || error.message
+        });
+
+    } finally {
+
+        if (connection) {
+            connection.release();
+        }
+    }
+
+    // Check waiting deliveries after returning from leave.
+    if (on_leave === 0) {
+
+        return exports.autoAssignWaitingDelivery(
+            (assignErr, assignmentData) => {
+
+                if (assignErr) {
+                    console.error(
+                        "AUTO ASSIGN AFTER LEAVE RETURN ERROR:",
+                        assignErr
+                    );
+
+                    return res.json({
+                        success: true,
+                        message:
+                            "Leave removed successfully, but automatic assignment check failed.",
+                        assignment: null
+                    });
+                }
+
+                return res.json({
+                    success: true,
+                    message: "Leave removed successfully",
+                    assignment: assignmentData || null
+                });
+            }
+        );
+    }
+
+    return res.json({
+        success: true,
+        message: "Leave applied successfully"
     });
 };
+
 // ======================================================
 // SETTLE CUSTOMER CANCELLATION CASH
 // DeliveryBoy physically cash দেওয়ার পরে এই API call করবে
@@ -3213,46 +3008,55 @@ exports.settleCancellationCash = (req, res) => {
             // Delivery fee will NOT be included.
             // ==================================================
 
-            const orderSQL = `
 
-                SELECT
-                    o.id AS order_id,
-                    o.order_status,
-                    o.order_type,
+const orderSQL = `
 
-                    COALESCE(
-                        SUM(oi.subtotal),
-                        0
-                    ) AS food_total
+    SELECT
+        o.id AS order_id,
+        o.order_status,
+        o.order_type,
 
-                FROM orders o
+        COALESCE(
+            SUM(oi.subtotal),
+            0
+        ) AS food_total
 
-                LEFT JOIN order_items oi
-                    ON oi.order_id = o.id
+    FROM orders o
 
-                WHERE
-                    o.customer_id = ?
+    LEFT JOIN order_items oi
+        ON oi.order_id = o.id
 
-                    AND o.order_status NOT IN (
-                        'Cancelled'
-                    )
+    WHERE
+        o.customer_id = ?
 
-                GROUP BY
-                    o.id,
-                    o.order_status,
-                    o.order_type
+        AND o.order_status NOT IN (
+            'Cancelled'
+        )
 
-                ORDER BY
-                    o.id DESC
+        AND EXISTS (
+            SELECT 1
+            FROM delivery_assignments da
+            WHERE da.order_id = o.id
+              AND da.delivery_boy_id = ?
+              AND da.status = 'Delivered'
+        )
 
-                LIMIT 1
+    GROUP BY
+        o.id,
+        o.order_status,
+        o.order_type
 
-            `;
+    ORDER BY
+        o.id DESC
+
+    LIMIT 1
+
+`;
 
 
             db.query(
-                orderSQL,
-                [customerId],
+    orderSQL,
+    [customerId, deliveryBoyId],
                 (orderError, orderResult) => {
 
                     if (orderError) {

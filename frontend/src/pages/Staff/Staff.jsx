@@ -72,7 +72,10 @@ const response = await api.get(
                 }
             );
 
-            const data = JSON.parse(response.data);
+            const data =
+    typeof response.data === "string"
+        ? JSON.parse(response.data)
+        : response.data;
             if (response.status < 200 || response.status >= 300) {
 
                 console.log(
@@ -335,10 +338,10 @@ const saveWorkingHours = async (staffId) => {
 const saveStaffPhone = async (staffId) => {
     const phone = editingPhone.trim();
 
-    if (!/^[0-9]{10,15}$/.test(phone)) {
-        alert("Enter a valid phone number (10–15 digits)");
-        return;
-    }
+   if (!/^[0-9]{10}$/.test(phone)) {
+    alert("Enter a valid 10-digit phone number");
+    return;
+}
 
     try {
         const response = await api.patch(
@@ -414,6 +417,47 @@ const resetStaffPassword = async (staffId) => {
     }
 };
 
+const deactivateStaffMember = async (staffId, staffName) => {
+    if (!window.confirm(
+        `Are you sure you want to deactivate ${staffName}? This staff member will no longer be active.`
+    )) {
+        return;
+    }
+
+    try {
+        const response = await api.patch(
+            `/staff/${staffId}/deactivate`,
+            {},
+            {
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${getToken()}`
+                },
+                validateStatus: () => true,
+                transformResponse: [(data) => data]
+            }
+        );
+
+        const data =
+            typeof response.data === "string"
+                ? JSON.parse(response.data)
+                : response.data;
+
+        if (response.status < 200 || response.status >= 300) {
+            alert(data.message || "Staff deactivation failed");
+            return;
+        }
+
+        alert("Staff deactivated successfully");
+
+        await loadStaff();
+
+    } catch (err) {
+        console.log("Staff Deactivation Error:", err);
+        alert("Could not deactivate staff");
+    }
+};
+
     return (
 
         <div className="staff-container">
@@ -483,7 +527,7 @@ const resetStaffPassword = async (staffId) => {
     Delivery Boy
 </option>
                     </select>
-{form.role === "DeliveryBoy" && (
+{["Manager", "DeliveryBoy"].includes(form.role) && (
     <div className="working-hours">
         <label>Working Hours</label>
 
@@ -560,7 +604,7 @@ const resetStaffPassword = async (staffId) => {
 
                                     <td>{item.role}</td>
 <td>
-    {item.role === "DeliveryBoy" ? (
+    {["Manager", "DeliveryBoy"].includes(item.role) ? (
 
         editingStaffId === item.id ? (
 
@@ -703,6 +747,19 @@ const resetStaffPassword = async (staffId) => {
             }}>
                 Reset Password
             </button>
+
+{item.status !== "Inactive" ? (
+    <button
+        onClick={() =>
+            deactivateStaffMember(item.id, item.name)
+        }
+    >
+        Deactivate Staff
+    </button>
+) : (
+    <span>Inactive</span>
+)}
+
         </div>
     )}
 </td>

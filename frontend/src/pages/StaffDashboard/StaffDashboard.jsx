@@ -2,7 +2,7 @@ import { useEffect, useState, useRef, useCallback } from "react";
 import api from "../../Services/api.js";
 import "./StaffDashboard.css";
 import { useNavigate } from "react-router-dom";
-
+import QRCode from "qrcode";
 
 // ======================================================
 // BACKEND API
@@ -40,7 +40,8 @@ function StaffDashboard() {
     // ======================================================
 
     const [orders, setOrders] = useState([]);
-
+const [shopOwnerQr, setShopOwnerQr] = useState(null);
+const [qrGenerating, setQrGenerating] = useState(false);
     const [loading, setLoading] = useState(true);
 
     const [error, setError] = useState("");
@@ -48,7 +49,70 @@ function StaffDashboard() {
    const [staff, setStaff] = useState(null);
 
 const navigate = useNavigate();
+// ======================================================
+// SHOP OWNER DYNAMIC UPI QR
+// ======================================================
 
+const openShopOwnerQr = async (order) => {
+
+    try {
+
+        const upiId = "Q015676127@ybl";
+        const shopName = "Jana Food Hub Restaurant";
+
+        const amount = Number(
+            order.total_amount || 0
+        );
+
+        if (!Number.isFinite(amount) || amount <= 0) {
+            alert("Invalid payment amount.");
+            return;
+        }
+
+        setQrGenerating(true);
+
+        const upiLink =
+            `upi://pay?pa=${encodeURIComponent(upiId)}` +
+            `&pn=${encodeURIComponent(shopName)}` +
+            `&am=${amount.toFixed(2)}` +
+            `&cu=INR` +
+            `&tn=${encodeURIComponent(
+                `COD Order ${order.order_id || order.id}`
+            )}`;
+
+        const qrImage = await QRCode.toDataURL(
+            upiLink,
+            {
+                errorCorrectionLevel: "M",
+                margin: 2,
+                width: 260
+            }
+        );
+
+        setShopOwnerQr({
+            image: qrImage,
+            amount: amount.toFixed(2),
+            orderId: order.order_id || order.id,
+            upiId,
+            shopName
+        });
+
+    } catch (error) {
+
+        console.error(
+            "SHOP OWNER QR GENERATION ERROR:",
+            error
+        );
+
+        alert("Unable to generate payment QR. Please try again.");
+
+    } finally {
+
+        setQrGenerating(false);
+
+    }
+
+};
     // ======================================================
     // NOTIFICATION STATE
     // ======================================================
@@ -620,7 +684,10 @@ const [managerDeliveryAlert, setManagerDeliveryAlert] =
                     await alertAudioContext.current.resume();
 
                 }
-
+console.log(
+    "🎵 NOTIFICATION AUDIO ELEMENT =",
+    notificationAudio.current
+);
                 // ==========================================
                 // PRELOAD / UNLOCK AUDIO FILE
                 // ==========================================
@@ -757,7 +824,16 @@ useEffect(() => {
 
     const handleDeliveryPush =
         (event) => {
-
+            console.log(
+    "🔊 MANAGER SOUND TEST:",
+    event.data,
+    "AudioContext:",
+    alertAudioContext.current?.state
+);
+  console.log(
+        "📩 SERVICE WORKER MESSAGE RECEIVED:",
+        event.data
+    );
             if (
                 event.data?.type ===
                 "DELIVERY_ALERT" ||
@@ -771,7 +847,9 @@ useEffect(() => {
                 );
 
                 playNotificationSound();
-
+console.log(
+    "🔊 SOUND FUNCTION CALLED"
+);
                 if (
                     "vibrate" in navigator
                 ) {
@@ -1457,6 +1535,70 @@ console.table(
 );
             // ==================================================
             // 🚚 MANAGER NEW DELIVERY ORDER DETECTION
+            // ==================================================
+// 🚚 MANAGER NEW DELIVERY ORDER DETECTION
+// ==================================================
+
+const currentDeliveryOrderIds = new Set(
+    orderList
+        .filter(order =>
+            String(order.order_type || "")
+                .trim()
+                .toLowerCase() === "delivery"
+        )
+        .map(order => Number(order.id))
+);
+
+// FIRST LOAD: Save existing Delivery Orders
+if (firstManagerAssignmentLoad.current) {
+
+    previousManagerAssignmentIds.current =
+        currentDeliveryOrderIds;
+
+    firstManagerAssignmentLoad.current = false;
+
+    console.log(
+        "📦 INITIAL MANAGER DELIVERY ORDERS LOADED",
+        [...currentDeliveryOrderIds]
+    );
+
+} else {
+
+    // Detect only newly received Delivery Orders
+    const newDeliveryOrders = orderList.filter(order => {
+
+        const orderId = Number(order.id);
+
+        const isDelivery =
+            String(order.order_type || "")
+                .trim()
+                .toLowerCase() === "delivery";
+
+        return (
+            isDelivery &&
+            !previousManagerAssignmentIds.current.has(orderId)
+        );
+    });
+
+    if (newDeliveryOrders.length > 0) {
+
+        console.log(
+            "🚨 MANAGER NEW DELIVERY ORDER",
+            newDeliveryOrders
+        );
+
+        playNotificationSound();
+
+        if ("vibrate" in navigator) {
+            navigator.vibrate([
+                500, 200, 500, 200, 1000
+            ]);
+        }
+    }
+
+    previousManagerAssignmentIds.current =
+        currentDeliveryOrderIds;
+}
             // ==================================================
             // IMPORTANT:
             // This uses ORDER ID, not assignment ID.
@@ -2810,7 +2952,97 @@ const logout = () => {
 
             <div className="orders-container">
 
+{/* ==================================================
+    SHOP OWNER PAYMENT QR MODAL
+================================================== */}
 
+{shopOwnerQr && (
+
+    <div
+        onClick={() => setShopOwnerQr(null)}
+        style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.7)",
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            zIndex: 9999,
+            padding: "15px"
+        }}
+    >
+
+        <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+                background: "white",
+                borderRadius: "15px",
+                padding: "22px",
+                width: "100%",
+                maxWidth: "380px",
+                textAlign: "center",
+                boxShadow: "0 5px 25px rgba(0,0,0,0.3)"
+            }}
+        >
+
+            <h2>🏪 Pay Shop Owner</h2>
+
+            <p>
+                {shopOwnerQr.shopName}
+            </p>
+
+            <h2 style={{ color: "#28a745" }}>
+                ₹{shopOwnerQr.amount}
+            </h2>
+
+            <p>
+                Order #{shopOwnerQr.orderId}
+            </p>
+
+            <img
+                src={shopOwnerQr.image}
+                alt="Shop Owner UPI Payment QR"
+                style={{
+                    width: "260px",
+                    maxWidth: "100%",
+                    height: "auto",
+                    display: "block",
+                    margin: "15px auto"
+                }}
+            />
+
+            <p style={{ fontSize: "13px" }}>
+                UPI ID: {shopOwnerQr.upiId}
+            </p>
+
+            <p style={{ color: "#555", fontSize: "13px" }}>
+                Shop Owner-এর UPI App দিয়ে QR Scan করে
+                Payment করুন।
+            </p>
+
+            <button
+                type="button"
+                onClick={() => setShopOwnerQr(null)}
+                style={{
+                    width: "100%",
+                    padding: "12px",
+                    background: "#dc3545",
+                    color: "white",
+                    border: "none",
+                    borderRadius: "8px",
+                    fontSize: "16px",
+                    fontWeight: "bold",
+                    cursor: "pointer"
+                }}
+            >
+                Close
+            </button>
+
+        </div>
+
+    </div>
+
+)}
                 {orders.length === 0 ? (
 
                     <div className="no-orders">
@@ -3572,41 +3804,7 @@ const logout = () => {
                         </p>
 
 
-                        {/* NAVIGATE TO SHOP */}
 
-                        <button
-                            onClick={() => {
-
-                                const latitude =
-                                    order.shop_latitude;
-
-                                const longitude =
-                                    order.shop_longitude;
-
-                                if (
-                                    latitude == null ||
-                                    longitude == null
-                                ) {
-
-                                    alert(
-                                        "Shop location is not available."
-                                    );
-
-                                    return;
-
-                                }
-
-                                window.open(
-                                    `https://www.google.com/maps/dir/?api=1&destination=${latitude},${longitude}`,
-                                    "_blank"
-                                );
-
-                            }}
-                        >
-
-                            🗺️ Navigate to Shop
-
-                        </button>
 
 
                         {/* PICKUP */}
@@ -3650,102 +3848,13 @@ const logout = () => {
                         </p>
 
 
-                        {/* NAVIGATE TO CUSTOMER */}
-
-                        <button
-                            onClick={() => {
-
-                                console.log(
-                                    "========== CUSTOMER LOCATION =========="
-                                );
-
-                                console.log(
-                                    "Order ID:",
-                                    order.id
-                                );
-
-                                console.log(
-                                    "Customer Latitude:",
-                                    order.customer_latitude
-                                );
-
-                                console.log(
-                                    "Customer Longitude:",
-                                    order.customer_longitude
-                                );
-
-                                console.log(
-                                    "Full Order:",
-                                    order
-                                );
-
-                                console.log(
-                                    "======================================="
-                                );
 
 
-                                const latitude =
-                                    order.customer_latitude;
-
-                                const longitude =
-                                    order.customer_longitude;
 
 
-                                if (
-                                    latitude == null ||
-                                    longitude == null
-                                ) {
-
-                                    alert(
-                                        "Customer location is not available."
-                                    );
-
-                                    return;
-
-                                }
 
 
-                                console.log(
-                                    "🚨 CUSTOMER NAVIGATION DEBUG"
-                                );
 
-                                console.log(
-                                    "Order ID =",
-                                    order.order_id
-                                );
-
-                                console.log(
-                                    "Customer Address =",
-                                    order.delivery_address
-                                );
-
-                                console.log(
-                                    "Customer Latitude =",
-                                    order.customer_latitude
-                                );
-
-                                console.log(
-                                    "Customer Longitude =",
-                                    order.customer_longitude
-                                );
-
-                                console.log(
-                                    "Google Maps Destination =",
-                                    `${order.customer_latitude},${order.customer_longitude}`
-                                );
-
-
-                                window.open(
-                                    `https://www.google.com/maps/dir/?api=1&destination=${latitude},${longitude}`,
-                                    "_blank"
-                                );
-
-                            }}
-                        >
-
-                            🗺️ Navigate to Customer
-
-                        </button>
 
 
 

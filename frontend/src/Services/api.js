@@ -1,4 +1,4 @@
-import axios from "axios";
+﻿import axios from "axios";
 
 const configError =
     "VITE_API_BASE_URL must be an absolute HTTP(S) URL ending in /api.";
@@ -36,6 +36,39 @@ const api = axios.create({
     headers: {
         "Content-Type": "application/json",
     },
+});
+
+
+// Automatically attach the logged-in user's JWT
+api.interceptors.request.use((config) => {
+    let token = null;
+
+    try {
+        const user = JSON.parse(localStorage.getItem("user") || "null");
+        const staffUser = JSON.parse(
+            localStorage.getItem("staffUser") ||
+            localStorage.getItem("staff") ||
+            "null"
+        );
+
+        if (user?.role?.toLowerCase() === "owner") {
+            token = localStorage.getItem("token");
+        } else if (staffUser?.role?.toLowerCase() === "manager") {
+            token = localStorage.getItem("staffToken");
+        } else {
+            token =
+                localStorage.getItem("token") ||
+                localStorage.getItem("staffToken");
+        }
+    } catch {
+        token = null;
+    }
+
+    if (token && !config.headers.Authorization) {
+        config.headers.Authorization = `Bearer ${token}`;
+    }
+
+    return config;
 });
 
 export default api;

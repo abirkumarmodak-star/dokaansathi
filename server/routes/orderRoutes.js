@@ -1,4 +1,6 @@
 const express = require("express");
+const authMiddleware = require("../middleware/authMiddleware");
+const requireRole = require("../middleware/roleMiddleware");
 const router = express.Router();
 
 console.log("✅ orderRoutes.js loaded");
@@ -9,6 +11,7 @@ router.use((req, res, next) => {
 });
 
 const {
+    deleteOrder,
     getOrders,
     createOrder,
     acceptOrder,
@@ -37,6 +40,14 @@ router.get(
     getOrderByToken
 );
 router.get("/", getOrders);
+
+// Owner and Manager only: soft-delete an order.
+router.delete(
+    "/:id",
+    authMiddleware,
+    requireRole("owner", "Owner", "Manager", "manager"),
+    deleteOrder
+);
 
 
 

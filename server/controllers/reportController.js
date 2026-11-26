@@ -7,26 +7,23 @@ const db = require("../config/db");
 exports.dailySalesReport = (req, res) => {
 
     const sql = `
-
-        SELECT
-
-        COUNT(*) AS totalOrders,
-
-        IFNULL(SUM(total_amount),0) AS totalSales,
-
-        IFNULL(AVG(total_amount),0) AS averageBill,
-
-        (
-            SELECT IFNULL(SUM(quantity),0)
-            FROM order_items
-        ) AS totalItemsSold
-
-        FROM orders
-
-        WHERE DATE(created_at)=CURDATE()
-
-        AND payment_status='Paid'
-
+SELECT
+    COUNT(*) AS totalOrders,
+    IFNULL(SUM(o.total_amount), 0) AS totalSales,
+    IFNULL(AVG(o.total_amount), 0) AS averageBill,
+    (
+        SELECT IFNULL(SUM(oi.quantity), 0)
+        FROM order_items oi
+        JOIN orders item_order
+            ON oi.order_id = item_order.id
+        WHERE DATE(item_order.created_at) = CURDATE()
+          AND item_order.order_status = 'Completed'
+          AND COALESCE(item_order.is_deleted, 0) = 0
+    ) AS totalItemsSold
+FROM orders o
+WHERE DATE(o.created_at) = CURDATE()
+  AND o.order_status = 'Completed'
+  AND COALESCE(o.is_deleted, 0) = 0
     `;
 
     db.query(sql, (err, result) => {
@@ -77,23 +74,15 @@ exports.dailySalesReport = (req, res) => {
 exports.monthlySalesReport = (req, res) => {
 
     const sql = `
-
-        SELECT
-
-        COUNT(*) AS totalOrders,
-
-        IFNULL(SUM(total_amount),0) AS totalSales,
-
-        IFNULL(AVG(total_amount),0) AS averageBill
-
-        FROM orders
-
-        WHERE MONTH(created_at)=MONTH(CURDATE())
-
-        AND YEAR(created_at)=YEAR(CURDATE())
-
-        AND payment_status='Paid'
-
+SELECT
+    COUNT(*) AS totalOrders,
+    IFNULL(SUM(o.total_amount), 0) AS totalSales,
+    IFNULL(AVG(o.total_amount), 0) AS averageBill
+FROM orders o
+WHERE MONTH(o.created_at) = MONTH(CURDATE())
+  AND YEAR(o.created_at) = YEAR(CURDATE())
+  AND o.order_status = 'Completed'
+  AND COALESCE(o.is_deleted, 0) = 0
     `;
 
     db.query(sql, (err, result) => {
@@ -142,16 +131,20 @@ exports.monthlySalesReport = (req, res) => {
 exports.bestSellingProduct = (req, res) => {
 
     const sql = `
-        SELECT
-            m.name AS productName,
-            SUM(oi.quantity) AS totalSold,
-            SUM(oi.subtotal) AS totalRevenue
-        FROM order_items oi
-        JOIN menu m
-            ON oi.menu_id = m.id
-        GROUP BY oi.menu_id
-        ORDER BY totalSold DESC
-        LIMIT 1
+SELECT
+    m.name AS productName,
+    SUM(oi.quantity) AS totalSold,
+    SUM(oi.subtotal) AS totalRevenue
+FROM order_items oi
+JOIN menu m
+    ON oi.menu_id = m.id
+JOIN orders o
+    ON oi.order_id = o.id
+WHERE o.order_status = 'Completed'
+  AND COALESCE(o.is_deleted, 0) = 0
+GROUP BY oi.menu_id, m.name
+ORDER BY totalSold DESC
+LIMIT 1
     `;
 
     db.query(sql, (err, result) => {
@@ -275,16 +268,21 @@ exports.lowStockReport = (req, res) => {
 exports.leastSellingProduct = (req, res) => {
 
     const sql = `
-        SELECT
-            m.name AS productName,
-            SUM(oi.quantity) AS totalSold,
-            SUM(oi.subtotal) AS totalRevenue
-        FROM order_items oi
-        JOIN menu m
-            ON oi.menu_id = m.id
-        GROUP BY oi.menu_id
-        ORDER BY totalSold ASC
-        LIMIT 1
+SELECT
+    m.name AS productName,
+    SUM(oi.quantity) AS totalSold,
+    SUM(oi.subtotal) AS totalRevenue
+FROM order_items oi
+JOIN menu m
+    ON oi.menu_id = m.id
+JOIN orders o
+    ON oi.order_id = o.id
+WHERE o.order_status = 'Completed'
+  AND COALESCE(o.is_deleted, 0) = 0
+GROUP BY oi.menu_id, m.name
+HAVING SUM(oi.quantity) > 0
+ORDER BY totalSold ASC
+LIMIT 1
     `;
 
     db.query(sql, (err, result) => {
@@ -339,19 +337,21 @@ exports.leastSellingProduct = (req, res) => {
 exports.dailyBestSellingProduct = (req, res) => {
 
     const sql = `
-        SELECT
-            m.name AS productName,
-            SUM(oi.quantity) AS totalSold,
-            SUM(oi.subtotal) AS totalRevenue
-        FROM order_items oi
-        JOIN menu m
-            ON oi.menu_id = m.id
-        JOIN orders o
-            ON oi.order_id = o.id
-        WHERE DATE(o.created_at) = CURDATE()
-        GROUP BY oi.menu_id
-        ORDER BY totalSold DESC
-        LIMIT 1
+SELECT
+    m.name AS productName,
+    SUM(oi.quantity) AS totalSold,
+    SUM(oi.subtotal) AS totalRevenue
+FROM order_items oi
+JOIN menu m
+    ON oi.menu_id = m.id
+JOIN orders o
+    ON oi.order_id = o.id
+WHERE DATE(o.created_at) = CURDATE()
+  AND o.order_status = 'Completed'
+  AND COALESCE(o.is_deleted, 0) = 0
+GROUP BY oi.menu_id, m.name
+ORDER BY totalSold DESC
+LIMIT 1
     `;
 
     db.query(sql, (err, result) => {
@@ -396,22 +396,22 @@ exports.dailyBestSellingProduct = (req, res) => {
 exports.monthlyBestSellingProduct = (req, res) => {
 
     const sql = `
-        SELECT
-            m.name AS productName,
-            SUM(oi.quantity) AS totalSold,
-            SUM(oi.subtotal) AS totalRevenue
-        FROM order_items oi
-        JOIN menu m
-            ON oi.menu_id = m.id
-        JOIN orders o
-            ON oi.order_id = o.id
-        WHERE
-            MONTH(o.created_at) = MONTH(CURDATE())
-            AND YEAR(o.created_at) = YEAR(CURDATE())
-            AND o.payment_status = 'Paid'
-        GROUP BY oi.menu_id
-        ORDER BY totalSold DESC
-        LIMIT 1
+SELECT
+    m.name AS productName,
+    SUM(oi.quantity) AS totalSold,
+    SUM(oi.subtotal) AS totalRevenue
+FROM order_items oi
+JOIN menu m
+    ON oi.menu_id = m.id
+JOIN orders o
+    ON oi.order_id = o.id
+WHERE MONTH(o.created_at) = MONTH(CURDATE())
+  AND YEAR(o.created_at) = YEAR(CURDATE())
+  AND o.order_status = 'Completed'
+  AND COALESCE(o.is_deleted, 0) = 0
+GROUP BY oi.menu_id, m.name
+ORDER BY totalSold DESC
+LIMIT 1
     `;
 
     db.query(sql, (err, result) => {
@@ -462,21 +462,23 @@ exports.monthlyBestSellingProduct = (req, res) => {
 exports.dailyLeastSellingProduct = (req, res) => {
 
     const sql = `
-        SELECT
-            m.name AS productName,
-            SUM(oi.quantity) AS totalSold,
-            SUM(oi.subtotal) AS totalRevenue
-        FROM order_items oi
-        JOIN menu m
-            ON oi.menu_id = m.id
-        JOIN orders o
-            ON oi.order_id = o.id
-        WHERE
-            DATE(o.created_at) = CURDATE()
-            AND o.payment_status = 'Paid'
-        GROUP BY oi.menu_id
-        ORDER BY totalSold ASC
-        LIMIT 1
+SELECT
+    m.name AS productName,
+    SUM(oi.quantity) AS totalSold,
+    SUM(oi.subtotal) AS totalRevenue
+FROM order_items oi
+JOIN menu m
+    ON oi.menu_id = m.id
+JOIN orders o
+
+    ON oi.order_id = o.id
+WHERE DATE(o.created_at) = CURDATE()
+  AND o.order_status = 'Completed'
+  AND COALESCE(o.is_deleted, 0) = 0
+GROUP BY oi.menu_id, m.name
+HAVING SUM(oi.quantity) > 0
+ORDER BY totalSold ASC
+LIMIT 1
     `;
 
     db.query(sql, (err, result) => {
@@ -527,22 +529,23 @@ exports.dailyLeastSellingProduct = (req, res) => {
 exports.monthlyLeastSellingProduct = (req, res) => {
 
     const sql = `
-        SELECT
-            m.name AS productName,
-            SUM(oi.quantity) AS totalSold,
-            SUM(oi.subtotal) AS totalRevenue
-        FROM order_items oi
-        JOIN menu m
-            ON oi.menu_id = m.id
-        JOIN orders o
-            ON oi.order_id = o.id
-        WHERE
-            MONTH(o.created_at) = MONTH(CURDATE())
-            AND YEAR(o.created_at) = YEAR(CURDATE())
-            AND o.payment_status = 'Paid'
-        GROUP BY oi.menu_id
-        ORDER BY totalSold ASC
-        LIMIT 1
+SELECT
+    m.name AS productName,
+    SUM(oi.quantity) AS totalSold,
+    SUM(oi.subtotal) AS totalRevenue
+FROM order_items oi
+JOIN menu m
+    ON oi.menu_id = m.id
+JOIN orders o
+    ON oi.order_id = o.id
+WHERE MONTH(o.created_at) = MONTH(CURDATE())
+  AND YEAR(o.created_at) = YEAR(CURDATE())
+  AND o.order_status = 'Completed'
+  AND COALESCE(o.is_deleted, 0) = 0
+GROUP BY oi.menu_id, m.name
+HAVING SUM(oi.quantity) > 0
+ORDER BY totalSold ASC
+LIMIT 1
     `;
 
     db.query(sql, (err, result) => {

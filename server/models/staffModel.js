@@ -194,9 +194,9 @@ exports.updateWorkingHours = (
         SET
             work_start_time = ?,
             work_end_time = ?
-        WHERE
-            id = ?
-            AND role = 'DeliveryBoy'
+       WHERE
+    id = ?
+    AND role IN ('Manager', 'DeliveryBoy')
     `;
 
     db.query(
@@ -222,4 +222,45 @@ exports.updatePassword = (staffId, hashedPassword, callback) => {
         [hashedPassword, staffId],
         callback
     );
+};
+
+// Update staff phone number
+exports.updatePhone = (staffId, phone, callback) => {
+    const sql = `
+        UPDATE staff
+        SET phone = ?
+        WHERE id = ?
+    `;
+
+    db.query(sql, [phone, staffId], callback);
+};
+
+
+// Check active delivery assignments
+exports.getActiveAssignments = (staffId, callback) => {
+    const sql = `
+        SELECT id, order_id, status
+        FROM delivery_assignments
+        WHERE delivery_boy_id = ?
+        AND status IN (
+            'Assigned',
+            'Accepted',
+            'PickedUp',
+            'OutForDelivery'
+        )
+    `;
+
+    db.query(sql, [staffId], callback);
+};
+
+
+// Deactivate staff without deleting historical records
+exports.deactivateStaff = (staffId, callback) => {
+    const sql = `
+        UPDATE staff
+        SET status = 'Inactive'
+        WHERE id = ?
+    `;
+
+    db.query(sql, [staffId], callback);
 };

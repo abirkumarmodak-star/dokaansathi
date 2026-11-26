@@ -1302,7 +1302,7 @@ return (
                 textShadow: "1px 2px 3px rgba(0,0,0,0.2)"
             }}
         >
-            UP TO 77.8769% OFF!
+            UP TO 40 to 80% OFF!
         </div>
 
         <div
@@ -1344,7 +1344,7 @@ return (
                 marginTop: "10px"
             }}
         >
-            *Up to 77.8769% off and cashback apply only to eligible offers. Terms and conditions apply.
+            *Up to 40 to 80% off and cashback apply only to eligible offers. Terms and conditions apply.
         </div>
     </div>
 )}
@@ -1569,7 +1569,88 @@ const isAvailable =
                                     {item.category}
 
                                 </p>
+{/* ==================================================
+    FOOD INGREDIENTS
+================================================== */}
 
+{Array.isArray(item.ingredients) &&
+ item.ingredients.length > 0 && (
+
+    <div
+        style={{
+            margin: "12px 0",
+            padding: "12px",
+            background: "#f8fafc",
+            borderRadius: "10px",
+            border: "1px solid #e5e7eb"
+        }}
+    >
+
+        <h3
+            style={{
+                margin: "0 0 12px 0",
+                fontSize: "16px"
+            }}
+        >
+            🥘 Ingredients / উপকরণ
+        </h3>
+
+        <div
+            style={{
+                display: "grid",
+                gridTemplateColumns: "1.4fr 1fr 1fr",
+                gap: "8px",
+                fontSize: "13px",
+                fontWeight: "bold",
+                paddingBottom: "8px",
+                borderBottom: "1px solid #ddd"
+            }}
+        >
+            <span>Ingredient</span>
+            <span>Half</span>
+            <span>Full</span>
+        </div>
+
+        {item.ingredients.map((ingredient, index) => (
+
+            <div
+                key={ingredient.id || index}
+                style={{
+                    display: "grid",
+                    gridTemplateColumns: "1.4fr 1fr 1fr",
+                    gap: "8px",
+                    padding: "8px 0",
+                    borderBottom: "1px solid #eee",
+                    fontSize: "13px",
+                    alignItems: "center"
+                }}
+            >
+
+                <span>
+                    {ingredient.ingredient_name}
+                </span>
+
+                <span>
+                    {ingredient.half_quantity ?? "—"}
+                    {ingredient.half_quantity != null && ingredient.unit
+                        ? ` ${ingredient.unit}`
+                        : ""}
+                </span>
+
+                <span>
+                    {ingredient.full_quantity ?? "—"}
+                    {ingredient.full_quantity != null && ingredient.unit
+                        ? ` ${ingredient.unit}`
+                        : ""}
+                </span>
+
+            </div>
+
+        ))}
+
+    </div>
+
+)}
 
                                 {/* ==================================================
                                     AVAILABILITY

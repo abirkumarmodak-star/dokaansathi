@@ -178,9 +178,13 @@ Staff.addStaff(
     // Actual role
     role: role,
 
-    // DeliveryBoy working hours
-    work_start_time: role === "DeliveryBoy" ? work_start_time : null,
-    work_end_time: role === "DeliveryBoy" ? work_end_time : null
+    work_start_time: ["Manager", "DeliveryBoy"].includes(role)
+    ? work_start_time
+    : null,
+
+work_end_time: ["Manager", "DeliveryBoy"].includes(role)
+    ? work_end_time
+    : null
 },
                     (err, result) => {
 
@@ -709,4 +713,145 @@ exports.resetStaffPassword = async (req, res) => {
             message: "Server Error"
         });
     }
+};
+
+exports.updateStaffPhone = (req, res) => {
+    const staffId = Number(req.params.id);
+    const phone = String(req.body.phone || "").trim();
+
+    if (!Number.isInteger(staffId) || staffId <= 0) {
+        return res.status(400).json({
+            message: "Invalid staff ID"
+        });
+    }
+
+    if (!/^\d{10}$/.test(phone)) {
+        return res.status(400).json({
+            message: "Enter a valid 10-digit phone number"
+        });
+    }
+
+    Staff.findByPhone(phone, (err, existingStaff) => {
+        if (err) {
+            console.error("Phone check error:", err);
+            return res.status(500).json({
+                message: "Phone number check failed"
+            });
+        }
+
+        const duplicate = existingStaff.find(
+            staff => Number(staff.id) !== staffId
+        );
+
+        if (duplicate) {
+            return res.status(409).json({
+                message: "Phone number already exists"
+            });
+        }
+
+        Staff.updatePhone(staffId, phone, (err, result) => {
+            if (err) {
+                console.error("Phone update error:", err);
+
+                if (err.code === "ER_DUP_ENTRY") {
+                    return res.status(409).json({
+                        message: "Phone number already exists"
+                    });
+                }
+
+                return res.status(500).json({
+                    message: "Phone number could not be updated"
+                });
+            }
+
+            if (result.affectedRows === 0) {
+                return res.status(404).json({
+                    message: "Staff not found"
+                });
+            }
+
+            return res.status(200).json({
+                message: "Phone number updated successfully"
+            });
+        });
+    });
+};
+
+exports.deactivateStaff = (req, res) => {
+    const staffId = Number(req.params.id);
+
+    if (!Number.isInteger(staffId) || staffId <= 0) {
+        return res.status(400).json({
+            message: "Invalid staff ID"
+        });
+    }
+
+    Staff.getAllStaff((err, staffList) => {
+        if (err) {
+            console.error("Staff lookup error:", err);
+            return res.status(500).json({
+                message: "Could not verify staff"
+            });
+        }
+
+        const staff = staffList.find(
+            item => Number(item.id) === staffId
+        );
+
+        if (!staff) {
+            return res.status(404).json({
+                message: "Staff not found"
+            });
+        }
+
+        if (staff.status === "Inactive") {
+            return res.status(400).json({
+                message: "Staff is already inactive"
+            });
+        }
+
+        // Check unfinished deliveries before deactivating a DeliveryBoy
+        if (staff.role === "DeliveryBoy") {
+            return Staff.getActiveAssignments(staffId, (err, assignments) => {
+                if (err) {
+                    console.error("Assignment check error:", err);
+                    return res.status(500).json({
+                        message: "Could not check delivery assignments"
+                    });
+                }
+
+                if (assignments.length > 0) {
+                    return res.status(409).json({
+                        message: "Cannot deactivate: active delivery assignments exist",
+                        activeAssignments: assignments
+                    });
+                }
+
+                deactivate();
+            });
+        }
+
+        deactivate();
+
+        function deactivate() {
+            Staff.deactivateStaff(staffId, (err, result) => {
+                if (err) {
+                    console.error("Staff deactivation error:", err);
+                    return res.status(500).json({
+                        message: "Staff could not be deactivated"
+                    });
+                }
+
+                if (result.affectedRows === 0) {
+                    return res.status(404).json({
+                        message: "Staff not found"
+                    });
+                }
+
+                return res.status(200).json({
+                    message: "Staff deactivated successfully"
+                });
+            });
+        }
+    });
 };

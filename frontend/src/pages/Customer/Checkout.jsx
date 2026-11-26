@@ -428,10 +428,7 @@ console.log(
         console.log(
             "========== CONFIRM ORDER =========="
         );
-if (!whatsappConfirmed) {
-    alert("Please send your order details to the owner on WhatsApp first.");
-    return;
-}
+
         // --------------------------------------------------
         // CART VALIDATION
         // --------------------------------------------------
@@ -1336,28 +1333,7 @@ localStorage.setItem(
                 </h2>
             </div>
 
-<div
-    style={{
-        marginTop: "15px",
-        marginBottom: "12px",
-        padding: "14px",
-        background: "#fff3cd",
-        border: "1px solid #ffcc66",
-        borderRadius: "10px",
-        color: "#7a4b00",
-        fontWeight: "bold",
-        lineHeight: "1.6",
-    }}
->
-    ⚠️ Important Order Instructions
 
-    <p style={{ marginBottom: 0 }}>
-         Before clicking Confirm Order, please send your order details
-    through the Order Details on WhatsApp button. Otherwise, your
-    order may not reach the shop owner for confirmation. Please click
-    the Order Details on WhatsApp button before clicking Confirm Order.
-    </p>
-</div>
 
             {/* ==================================================
                 CONFIRM ORDER
@@ -1367,25 +1343,21 @@ localStorage.setItem(
 <button
     type="button"
     onClick={confirmOrder}
-    disabled={
-        cartItems.length === 0 ||
-        !whatsappConfirmed
-    }
+    disabled={cartItems.length === 0}
     style={{
         width: "100%",
         marginTop: "15px",
         padding: "14px",
-        background: whatsappConfirmed
-            ? "#198754"
-            : "#999",
+        background: "#198754",
         color: "#fff",
         border: "none",
         borderRadius: "10px",
         fontSize: "16px",
         fontWeight: "bold",
-        cursor: whatsappConfirmed
-            ? "pointer"
-            : "not-allowed"
+        cursor: cartItems.length === 0
+            ? "not-allowed"
+            : "pointer",
+        opacity: cartItems.length === 0 ? 0.6 : 1
     }}
 >
     {paymentMethod === "Cash"
@@ -1393,33 +1365,8 @@ localStorage.setItem(
         : "✅ I Have Paid — Confirm UPI Order"}
 </button>
 
-<button
-    type="button"
-    onClick={openOwnerWhatsApp}
-    disabled={cartItems.length === 0}
-    style={{
-        marginTop: "12px",
-        marginLeft: "8px",
-        padding: "12px 18px",
-        background: "#25D366",
-        color: "#fff",
-        border: "none",
-        borderRadius: "8px",
-        fontWeight: "bold",
-        cursor: "pointer"
-    }}
->
-    💬 Order Details on WhatsApp
-</button>
 
-<label style={{ display: "block", marginTop: "12px", marginBottom: "12px" }}>
-    <input
-        type="checkbox"
-        checked={whatsappConfirmed}
-        onChange={(e) => setWhatsappConfirmed(e.target.checked)}
-    />
-    {" "}I have sent my order details to the owner on WhatsApp.
-</label>
+
 
             {/* ==================================================
                 ADD MORE FOODS

@@ -120,35 +120,23 @@ function OrderTracking() {
             const data = JSON.parse(response.data);
 
             alert(data.message);
+if (response.status >= 200 && response.status < 300) {
+    setOrder(prev => ({
+        ...prev,
+        order_status: "Cancelled",
+        ...(prev.order_type === "Delivery" && {
+            delivery_status: "Cancelled"
+        })
+    }));
 
-            if (response.status >= 200 && response.status < 300) {
-                trackOrder();
-            }
+    trackOrder();
+}
 
         } catch {
             alert("Cancel Failed");
         }
     };
 
-const contactOwnerWhatsApp = () => {
-    const ownerNumber = "918670334666";
-
-    const message = [
-        "Hello Jana Food Hub,",
-        "",
-        "I need help with cancelling my order.",
-        `Order Token: ${order?.token_number || token || "Not available"}`,
-        `Order ID: ${order?.id || "Not available"}`,
-        `Order Status: ${order?.order_status || "Not available"}`,
-        "",
-        "Please help me with the cancellation."
-    ].join("\n");
-
-    const url =
-        `https://wa.me/${ownerNumber}?text=${encodeURIComponent(message)}`;
-
-    window.open(url, "_blank", "noopener,noreferrer");
-};
 
     // ==========================================
     // DELIVERY STATUS
@@ -318,31 +306,26 @@ const contactOwnerWhatsApp = () => {
     CANCEL
 ================================== */}
 
-{(
-    // ==========================================
-    // NORMAL ORDER
-    // ==========================================
-    (
-        order.order_type !== "Delivery" &&
-        order.order_status === "Pending"
-    )
 
-    ||
 
-    // ==========================================
-    // DELIVERY ORDER
-    // ==========================================
+
+
+
+
+  {order.order_status !== "Cancelled" && (
     (
-        order.order_type === "Delivery" &&
         (
-            // No DeliveryBoy assigned yet
-            !order.delivery_status ||
-
-            // DeliveryBoy assigned but not started delivery
-            order.delivery_status === "Assigned" ||
-
-            // DeliveryBoy accepted but has not started delivery
-            order.delivery_status === "Accepted"
+            order.order_type !== "Delivery" &&
+            order.order_status === "Pending"
+        )
+        ||
+        (
+            order.order_type === "Delivery" &&
+            (
+                !order.delivery_status ||
+                order.delivery_status === "Assigned" ||
+                order.delivery_status === "Accepted"
+            )
         )
     )
 ) && (
@@ -350,41 +333,8 @@ const contactOwnerWhatsApp = () => {
         <button onClick={cancelOrder}>
             ❌ Cancel Order
         </button>
-
-        <button
-            type="button"
-            onClick={contactOwnerWhatsApp}
-            style={{
-                marginLeft: "10px",
-                padding: "10px 14px",
-                background: "#25D366",
-                color: "#fff",
-                border: "none",
-                borderRadius: "8px",
-                cursor: "pointer",
-                fontWeight: "bold"
-            }}
-        >
-            💬 WhatsApp Owner
-        </button>
-
-        <p style={{ marginTop: "10px", color: "#9a3412" }}>
-            অর্ডার বাতিল করতে দোকানের মালিককে ফোন বা WhatsApp-এ যোগাযোগ করুন।
-        </p>
-
-        <p>
-            Owner WhatsApp:{" "}
-            <a
-                href="https://wa.me/918670334666"
-                target="_blank"
-                rel="noopener noreferrer"
-            >
-                +91 86703 34666
-            </a>
-        </p>
     </div>
 )}
-
 
 
                 </div>

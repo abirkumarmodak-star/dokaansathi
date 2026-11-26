@@ -76,6 +76,10 @@ const formattedMenu = data.map((item) => ({
 
     serving_size: item.serving_size,
 
+    ingredients: Array.isArray(item.ingredients)
+        ? item.ingredients
+        : [],
+
     status:
         item.available
             ? "Available"
@@ -173,8 +177,7 @@ const formattedMenu = data.map((item) => ({
     // ==========================
     // EDIT FOOD
     // ==========================
-
-  const handleEdit = (food) => {
+const handleEdit = (food) => {
 
     setSelectedFood({
 
@@ -186,7 +189,9 @@ const formattedMenu = data.map((item) => ({
 
         servingType: food.serving_type,
 
-        servingSize: food.serving_size
+        servingSize: food.serving_size,
+
+        ingredients: food.ingredients || []
 
     });
 
@@ -225,7 +230,7 @@ alert(token);
                     Accept: "*/*",
                     Authorization: `Bearer ${token}`
                 },
-                data: JSON.stringify({
+ data: JSON.stringify({
 
     name: foodData.name,
 
@@ -236,16 +241,13 @@ alert(token);
     full_price: foodData.fullPrice,
 
     available:
-
-        foodData.status === "Available"
-
-            ? 1
-
-            : 0,
+        foodData.status === "Available" ? 1 : 0,
 
     serving_type: foodData.servingType,
 
-    serving_size: foodData.servingSize
+    serving_size: foodData.servingSize,
+
+    ingredients: foodData.ingredients || []
 
 }),
                 validateStatus: () => true,

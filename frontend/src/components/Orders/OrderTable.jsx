@@ -4,7 +4,9 @@ function OrderTable({
 
     orders,
     onView,
-    onStatusChange
+    onStatusChange,
+    canDelete,
+    onDelete
 
 }) {
 
@@ -63,7 +65,13 @@ function OrderTable({
 
                                 <td>{order.customer}</td>
 
-                                <td>{order.items}</td>
+                            <td>
+    {order.items?.length
+        ? order.items.map(item =>
+            `${item.name} × ${item.quantity}`
+          ).join(", ")
+        : "-"}
+</td>
 
                                 <td>₹{order.total}</td>
 
@@ -124,6 +132,15 @@ function OrderTable({
                                         👁 View
 
                                     </button>
+
+                                    {canDelete && (
+                                        <button
+                                            className="delete-order-btn"
+                                            onClick={() => onDelete(order.id)}
+                                        >
+                                            Delete
+                                        </button>
+                                    )}
 
                                 </td>
 

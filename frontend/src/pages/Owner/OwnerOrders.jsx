@@ -31,6 +31,27 @@ function OwnerOrders() {
 
     const [loading, setLoading] = useState(true);
 
+    const [canDeleteOrders] = useState(() => {
+        try {
+            const ownerUser = JSON.parse(
+                localStorage.getItem("user") || "null"
+            );
+
+            const staffUser = JSON.parse(
+                localStorage.getItem("staffUser") ||
+                localStorage.getItem("staff") ||
+                "null"
+            );
+
+            return (
+                ownerUser?.role === "Owner" ||
+                staffUser?.role === "Manager"
+            );
+        } catch {
+            return false;
+        }
+    });
+
 
     // =====================================
     // LOAD ORDERS
@@ -45,8 +66,13 @@ function OwnerOrders() {
             });
 
 
-            const newOrders =
-                response.data.orders;
+            // The current GET /api/orders controller returns a bare array.
+            // Accept both the bare-array and wrapped response shapes safely.
+            const newOrders = Array.isArray(response.data)
+                ? response.data
+                : (Array.isArray(response.data?.orders)
+                    ? response.data.orders
+                    : []);
 
 
             // =================================
@@ -258,6 +284,32 @@ function OwnerOrders() {
         // =====================================
     // ACCEPT ALL PENDING ORDERS
     // =====================================
+
+    // =====================================
+    // SOFT DELETE ORDER
+    // =====================================
+
+    const deleteOrder = async (orderId) => {
+        const confirmed = window.confirm(
+            "Delete this order? Its database record and history will be preserved."
+        );
+        if (!confirmed) return;
+
+        try {
+            const response = await api.delete(`/orders/${orderId}`);
+            alert(response.data.message || "Order deleted successfully");
+            setOrders(current => current.filter(order => order.id !== orderId));
+
+            const deletedOrder = orders.find(order => order.id === orderId);
+            if (deletedOrder?.order_status === "Pending") {
+                previousPending.current = Math.max(0, previousPending.current - 1);
+            }
+        } catch (error) {
+            console.error("DELETE ORDER ERROR:", error);
+            alert(error.response?.data?.message || "Failed to delete order");
+        }
+    };
+
 
     const acceptAllOrders = async () => {
 
@@ -547,6 +599,17 @@ const testNotificationSound = () => {
 
                             </p>
 
+
+                            {/* =================================
+                                SOFT DELETE: available for every order status */}
+                            {canDeleteOrders && (
+                                <button
+                                    className="delete-order-btn"
+                                    onClick={() => deleteOrder(order.id)}
+                                >
+                                    🗑 Delete Order
+                                </button>
+                            )}
 
                             {/* =================================
                                 PENDING → ACCEPTED

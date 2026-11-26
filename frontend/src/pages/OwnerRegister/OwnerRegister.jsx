@@ -50,7 +50,7 @@ function OwnerRegister() {
             setLoading(true);
 
             const response = await api.post(
-                "/users/bootstrap",
+                "/users",
                 JSON.stringify({
                         name,
                         phone,

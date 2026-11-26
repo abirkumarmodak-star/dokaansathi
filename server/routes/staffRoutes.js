@@ -8,7 +8,9 @@ const {
     staffLogin,
     updateAvailability,
     resetStaffPassword,
-    updateWorkingHours
+    updateWorkingHours,
+     updateStaffPhone,
+    deactivateStaff
 } = require("../controllers/staffController");
 
 const authMiddleware = require("../middleware/authMiddleware");
@@ -143,5 +145,19 @@ router.patch(
 // ======================================================
 // EXPORT ROUTER
 // ======================================================
+// Update staff phone number
+router.patch(
+    "/:id/phone",
+    authMiddleware,
+    requireRole("Owner"),
+    updateStaffPhone
+);
 
+// Deactivate staff (soft delete)
+router.patch(
+    "/:id/deactivate",
+    authMiddleware,
+    requireRole("Owner"),
+    deactivateStaff
+);
 module.exports = router;

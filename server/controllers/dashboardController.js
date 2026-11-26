@@ -10,7 +10,8 @@ exports.getDashboard = (req, res) => {
 
         SELECT
 
-        (SELECT COUNT(*) FROM orders)
+        (SELECT COUNT(*) FROM orders
+        WHERE COALESCE(is_deleted, 0) = 0)
         AS totalOrders,
 
         (SELECT IFNULL(SUM(total_amount),0)
@@ -24,27 +25,32 @@ exports.getDashboard = (req, res) => {
 
         (SELECT COUNT(*)
         FROM orders
-        WHERE order_status='Pending')
+        WHERE order_status='Pending'
+          AND COALESCE(is_deleted, 0) = 0)
         AS pendingOrders,
 
         (SELECT COUNT(*)
         FROM orders
-        WHERE order_status='Preparing')
+        WHERE order_status='Preparing'
+          AND COALESCE(is_deleted, 0) = 0)
         AS preparingOrders,
 
         (SELECT COUNT(*)
         FROM orders
-        WHERE order_status='Ready')
+        WHERE order_status='Ready'
+          AND COALESCE(is_deleted, 0) = 0)
         AS readyOrders,
 
         (SELECT COUNT(*)
         FROM orders
-        WHERE order_status='Served')
+        WHERE order_status='Served'
+          AND COALESCE(is_deleted, 0) = 0)
         AS servedOrders,
 
         (SELECT COUNT(*)
         FROM orders
-        WHERE order_status='Cancelled')
+        WHERE order_status='Cancelled'
+          AND COALESCE(is_deleted, 0) = 0)
         AS cancelledOrders,
 
         (SELECT COUNT(*)

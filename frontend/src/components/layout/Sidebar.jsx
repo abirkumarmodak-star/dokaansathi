@@ -2,6 +2,15 @@ import "./Sidebar.css";
 import { Link } from "react-router-dom";
 
 function Sidebar() {
+    const canViewReports = (() => {
+        try {
+            const owner = JSON.parse(localStorage.getItem("user") || "null");
+            const staff = JSON.parse(localStorage.getItem("staffUser") || localStorage.getItem("staff") || "null");
+            return owner?.role === "Owner" || staff?.role === "Manager";
+        } catch {
+            return false;
+        }
+    })();
     return (
         <div className="sidebar">
 
@@ -53,11 +62,11 @@ function Sidebar() {
                     </Link>
                 </li>
 
-                <li>
-                    <Link to="/reports">
-                        📊 Reports
-                    </Link>
-                </li>
+                {canViewReports && (
+        <li>
+            <Link to="/reports">?? Reports</Link>
+        </li>
+    )}
 
                 <li>
                     <Link to="/settings">

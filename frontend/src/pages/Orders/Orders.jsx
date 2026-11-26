@@ -26,6 +26,16 @@ function Orders() {
 
     const [selectedOrder, setSelectedOrder] = useState(null);
 
+    const [canDeleteOrders] = useState(() => {
+        try {
+            const owner = JSON.parse(localStorage.getItem("user") || "null");
+            const staff = JSON.parse(localStorage.getItem("staffUser") || localStorage.getItem("staff") || "null");
+            return owner?.role === "Owner" || staff?.role === "Manager";
+        } catch {
+            return false;
+        }
+    });
+
     // ==========================
     // LOAD ORDERS
     // ==========================
@@ -58,26 +68,57 @@ const orderList = Array.isArray(data)
     : Array.isArray(data.orders)
         ? data.orders
         : [];
-
 const formattedOrders = orderList.map((order) => ({
+    id: order.id,
 
-                id: order.id,
+    customer: order.customer_name || `Customer ${order.customer_id}`,
+    customerPhone: order.customer_phone || "",
 
-                customer: order.customer_name || `Customer ${order.customer_id}`,
+    token: `#${order.id}`,
+    total: Number(order.total_amount || 0),
 
-                token: `#${order.id}`,
+    status: order.order_status,
+    orderType: order.order_type || "",
 
-                total: Number(order.total_amount),
+    table: order.table_number,
 
-                status: order.order_status,
+    payment: order.payment_status || "",
+    paymentMethod: order.payment_method || "",
 
-                table: order.table_number,
+    instruction: order.special_instruction || "",
 
-                payment: order.payment_status,
+    items: Array.isArray(order.items)
+        ? order.items.map((item) => ({
+            ...item,
+            name: item.name || item.item_name || "Unknown Item",
+            quantity: Number(item.quantity || 0),
+            price: Number(item.price || 0),
+            subtotal: Number(
+                item.subtotal ??
+                (Number(item.price || 0) * Number(item.quantity || 0))
+            )
+        }))
+        : [],
 
-                instruction: order.special_instruction
+    deliveryAddress:
+        order.delivery_address ||
+        order.customer_saved_address ||
+        "",
 
-            }));
+    deliveryLandmark: order.delivery_landmark || "",
+    deliveryFee: Number(order.delivery_fee || 0),
+
+    deliveryBoyName: order.delivery_boy_name || "",
+    deliveryBoyId: order.delivery_boy_id || "",
+    deliveryStatus: order.delivery_status || "",
+    assignedAt: order.assigned_at || "",
+
+    createdAt:
+        order.created_at ||
+        order.order_date ||
+        order.order_time ||
+        ""
+}));
 
             setOrders(formattedOrders);
 
@@ -182,6 +223,26 @@ const formattedOrders = orderList.map((order) => ({
     };
 
     // ==========================
+    // SOFT DELETE ORDER
+    const handleDeleteOrder = async (id) => {
+        if (!canDeleteOrders) return;
+        if (!window.confirm("Are you sure you want to delete this order?")) return;
+
+        try {
+            const response = await apiClient.delete(`/orders/${id}`);
+            const data = response.data;
+
+            setOrders(previous => previous.filter(order => order.id !== id));
+
+            if (selectedOrder?.id === id) setSelectedOrder(null);
+
+            alert(data?.message || "Order deleted successfully");
+        } catch (err) {
+            console.log(err);
+            alert(err.response?.data?.message || "Failed to delete order");
+        }
+    };
+
     // SEARCH + FILTER
     // ==========================
 
@@ -260,6 +321,8 @@ const formattedOrders = orderList.map((order) => ({
                 orders={filteredOrders}
 
                 onView={setSelectedOrder}
+                canDelete={canDeleteOrders}
+                onDelete={handleDeleteOrder}
 
                 onStatusChange={(id) => {
 

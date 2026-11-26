@@ -73,8 +73,15 @@ self.addEventListener("push", event => {
                     type: "window",
                     includeUncontrolled: true
                 });
-
+console.log(
+    "📡 SERVICE WORKER CLIENT COUNT =",
+    clients.length
+);
                 clients.forEach(client => {
+                    console.log(
+        "📤 SENDING MESSAGE TO CLIENT =",
+        client.url
+    );
                     client.postMessage({
                         type: data.type || "DELIVERY_ALERT",
                         orderId: data.orderId,

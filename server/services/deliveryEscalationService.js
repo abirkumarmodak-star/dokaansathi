@@ -5,6 +5,10 @@ const {
     sendPushToDeliveryBoy
 } = require("./deliveryPushService");
 
+const {
+    validateOrderItems
+} = require("./orderValidationService");
+
 const REMINDER_MINUTES = 5;
 const ESCALATION_MINUTES = 5;
 const IST_OFFSET_MINUTES = 330;
@@ -57,11 +61,54 @@ const withTransaction = async (callback) => {
         connection.release();
     }
 };
-
 const isActiveOrder = (order) =>
     order &&
     order.order_type === "Delivery" &&
-    !["Completed", "Cancelled"].includes(order.order_status);
+    ["Pending", "Accepted", "Preparing", "Ready"].includes(
+        order.order_status
+    );
+
+// Cancel an invalid order only while this exact assignment/attempt is active.
+// Both rows are already locked by the caller's transaction.
+const cancelInvalidDeliveryAssignment = async (
+    connection,
+    candidate,
+    expectedAttemptStatus
+) => {
+    const expired = await query(
+        connection,
+        `
+            UPDATE delivery_assignment_attempts
+            SET status = 'Expired',
+                expired_at = UTC_TIMESTAMP()
+            WHERE id = ?
+              AND status = ?
+        `,
+        [candidate.attempt_id, expectedAttemptStatus]
+    );
+
+    if (expired.affectedRows !== 1) return false;
+
+    const cancelled = await query(
+        connection,
+        `
+            UPDATE delivery_assignments
+            SET status = 'Cancelled'
+            WHERE id = ?
+              AND status = 'Assigned'
+              AND delivery_boy_id = ?
+        `,
+        [candidate.assignment_id, candidate.delivery_boy_id]
+    );
+
+    if (cancelled.affectedRows !== 1) {
+        throw new Error(
+            "Invalid delivery order assignment changed during cancellation"
+        );
+    }
+
+    return true;
+};
 
 // ======================================================
 // STEP 1: REMINDER AFTER 5 MINUTES
@@ -194,6 +241,21 @@ const processReminders = async () => {
 
                 if (!isActiveOrder(orders[0])) return false;
 
+                const validation = await validateOrderItems(
+                    candidate.order_id,
+                    connection
+                );
+
+                if (!validation.valid) {
+                    const cancelled = await cancelInvalidDeliveryAssignment(
+                        connection,
+                        candidate,
+                        "Assigned"
+                    );
+
+                    return cancelled ? "invalid_order" : false;
+                }
+
                 const elapsed = await query(
                     connection,
                     `
@@ -226,7 +288,15 @@ const processReminders = async () => {
                 return result.affectedRows === 1;
             });
 
-            if (!claimed) continue;
+            if (!claimed || claimed === "invalid_order") {
+                if (claimed === "invalid_order") {
+                    console.warn(
+                        "⚠️ INVALID DELIVERY ORDER CANCELLED BEFORE REMINDER:",
+                        candidate.order_id
+                    );
+                }
+                continue;
+            }
 
             let pushResult;
 
@@ -250,70 +320,14 @@ const processReminders = async () => {
             console.log("📨 REMINDER PUSH RESULT:", pushResult);
 
             if (!pushResult || pushResult.success !== true) {
-                // Retry only if the same attempt is still active.
-                try {
-                    await withTransaction(async connection => {
-                        const assignments = await query(
-                            connection,
-                            `
-                                SELECT id, status, delivery_boy_id
-                                FROM delivery_assignments
-                                WHERE id = ?
-                                FOR UPDATE
-                            `,
-                            [candidate.assignment_id]
-                        );
-
-                        if (
-                            !assignments.length ||
-                            assignments[0].status !== "Assigned" ||
-                            Number(assignments[0].delivery_boy_id) !==
-                                Number(candidate.delivery_boy_id)
-                        ) {
-                            return;
-                        }
-
-                        const attempts = await query(
-                            connection,
-                            `
-                                SELECT id, status
-                                FROM delivery_assignment_attempts
-                                WHERE id = ?
-                                FOR UPDATE
-                            `,
-                            [candidate.attempt_id]
-                        );
-
-                        if (
-                            !attempts.length ||
-                            attempts[0].status !== "Reminded"
-                        ) {
-                            return;
-                        }
-
-                        await query(
-                            connection,
-                            `
-                                UPDATE delivery_assignment_attempts
-                                SET status = 'Assigned',
-                                    reminded_at = NULL
-                                WHERE id = ?
-                                  AND status = 'Reminded'
-                            `,
-                            [candidate.attempt_id]
-                        );
-                    });
-
-                    console.log(
-                        "↩️ REMINDER PUSH FAILED — RETRY ENABLED",
-                        candidate.order_id
-                    );
-                } catch (retryError) {
-                    console.error(
-                        "❌ REMINDER RETRY RESET ERROR:",
-                        retryError
-                    );
-                }
+                // Notification delivery must never control the assignment
+                // timeout. Keep the attempt as Reminded so escalation still
+                // happens 5 minutes later (10 minutes from initial assignment).
+                console.warn(
+                    "⚠️ REMINDER PUSH NOT DELIVERED; EXPIRY TIMER CONTINUES:",
+                    candidate.order_id,
+                    pushResult || null
+                );
             }
         } catch (err) {
             console.error(
@@ -459,6 +473,23 @@ const processEscalations = async () => {
 
                 if (!isActiveOrder(orders[0])) return null;
 
+                const validation = await validateOrderItems(
+                    candidate.order_id,
+                    connection
+                );
+
+                if (!validation.valid) {
+                    const cancelled = await cancelInvalidDeliveryAssignment(
+                        connection,
+                        candidate,
+                        "Reminded"
+                    );
+
+                    return cancelled
+                        ? { type: "invalid_order" }
+                        : null;
+                }
+
                 const elapsed = await query(
                     connection,
                     `
@@ -475,39 +506,86 @@ const processEscalations = async () => {
                 if (!elapsed[0] || !elapsed[0].ready) return null;
 
                 // Find and lock the next eligible Delivery Boy.
-                const nextBoys = await query(
-                    connection,
-                    `
-                        SELECT
-                            s.id
-                        FROM staff s
-                        WHERE s.role = 'DeliveryBoy'
-                          AND s.status = 'Active'
-                          AND s.online_status = 'Online'
-                          AND s.on_leave = 0
-                          AND TIME(
-                              DATE_ADD(
-                                  UTC_TIMESTAMP(),
-                                  INTERVAL ? MINUTE
+                // Lock the next eligible staff row, then perform a separate
+                // current read of active assignments after acquiring that lock.
+                let nextBoy = null;
+                let lastCheckedBoyId = 0;
+
+                while (true) {
+                    const nextBoys = await query(
+                        connection,
+                        `
+                            SELECT s.id
+                            FROM staff s
+                            WHERE s.id > ?
+                              AND s.id <> ?
+                              AND s.role = 'DeliveryBoy'
+                              AND s.status = 'Active'
+                              AND s.online_status = 'Online'
+                              AND s.on_leave = 0
+                              AND TIME(
+                                  DATE_ADD(
+                                      UTC_TIMESTAMP(),
+                                      INTERVAL ? MINUTE
+                                  )
+                              ) BETWEEN s.work_start_time
+                                AND s.work_end_time
+                              AND NOT EXISTS (
+                                  SELECT 1
+                                  FROM delivery_assignments da2
+                                  WHERE da2.delivery_boy_id = s.id
+                                    AND da2.status IN (
+                                        'Assigned',
+                                        'Accepted',
+                                        'PickedUp',
+                                        'OutForDelivery'
+                                    )
                               )
-                          ) BETWEEN s.work_start_time AND s.work_end_time
-                          AND s.id <> ?
-                          AND NOT EXISTS (
-                              SELECT 1
-                              FROM delivery_assignments da2
-                              WHERE da2.delivery_boy_id = s.id
-                                AND da2.status IN (
-                                    'Assigned',
-                                    'Accepted',
-                                    'OutForDelivery'
-                                )
-                          )
-                        ORDER BY s.id ASC
-                        LIMIT 1
-                        FOR UPDATE
-                    `,
-                    [IST_OFFSET_MINUTES, candidate.delivery_boy_id]
-                );
+                            ORDER BY s.id ASC
+                            LIMIT 1
+                            FOR UPDATE
+                        `,
+                        [
+                            lastCheckedBoyId,
+                            candidate.delivery_boy_id,
+                            IST_OFFSET_MINUTES
+                        ]
+                    );
+
+                    if (!nextBoys.length) break;
+
+                    const candidateBoy = nextBoys[0];
+                    lastCheckedBoyId = Number(candidateBoy.id);
+
+                    const activeAssignmentsForBoy = await query(
+                        connection,
+                        `
+                            SELECT id
+                            FROM delivery_assignments
+                            WHERE delivery_boy_id = ?
+                              AND status IN (
+                                  'Assigned',
+                                  'Accepted',
+                                  'PickedUp',
+                                  'OutForDelivery'
+                              )
+                            LIMIT 1
+                            FOR UPDATE
+                        `,
+                        [candidateBoy.id]
+                    );
+
+                    if (activeAssignmentsForBoy.length) {
+                        console.warn(
+                            "⏭️ ESCALATION CANDIDATE ALREADY BUSY:",
+                            candidateBoy.id
+                        );
+                        continue;
+                    }
+
+                    nextBoy = candidateBoy;
+                    break;
+                }
 
                 // Expire the old attempt.
                 const expired = await query(
@@ -525,7 +603,7 @@ const processEscalations = async () => {
                 if (expired.affectedRows !== 1) return null;
 
                 // No available Boy: cancel assignment.
-                if (!nextBoys.length) {
+                if (!nextBoy) {
                     const cancelled = await query(
                         connection,
                         `
@@ -555,7 +633,7 @@ const processEscalations = async () => {
                     };
                 }
 
-                const nextBoyId = nextBoys[0].id;
+                const nextBoyId = nextBoy.id;
                 const newAttemptNo = Number(attempt.attempt_no) + 1;
 
                 const updated = await query(
@@ -623,6 +701,14 @@ const processEscalations = async () => {
         }
 
         if (!result) continue;
+
+        if (result.type === "invalid_order") {
+            console.warn(
+                "⚠️ INVALID DELIVERY ORDER CANCELLED BEFORE ESCALATION:",
+                candidate.order_id
+            );
+            continue;
+        }
 
         if (result.type === "no_boy") {
             console.log(

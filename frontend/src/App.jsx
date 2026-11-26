@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 
 import MainLayout from "./layouts/MainLayout";
+import Reports from "./pages/Reports/Reports";
 
 // Owner / Admin
 import Login from "./pages/Login/Login";
@@ -84,6 +85,11 @@ function App() {
                     <Route
                         path="/customers"
                         element={<Customers />}
+                    />
+
+                    <Route
+                        path="/reports"
+                        element={<Reports />}
                     />
 
                 </Route>

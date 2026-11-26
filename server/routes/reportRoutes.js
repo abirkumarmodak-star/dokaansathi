@@ -2,6 +2,9 @@ const express = require("express");
 
 const router = express.Router();
 
+const authMiddleware = require("../middleware/authMiddleware");
+const requireRole = require("../middleware/roleMiddleware");
+
 const {
     dailySalesReport,
     monthlySalesReport,
@@ -13,6 +16,15 @@ const {
     dailyLeastSellingProduct,
     monthlyLeastSellingProduct
 } = require("../controllers/reportController");
+
+// =====================================
+// REPORT ACCESS: OWNER AND MANAGER ONLY
+// =====================================
+
+router.use(
+    authMiddleware,
+    requireRole("owner", "Owner", "Manager", "manager")
+);
 
 // =====================================
 // DAILY SALES REPORT
